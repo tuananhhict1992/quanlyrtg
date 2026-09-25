@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-main: #F8FAFC;
+    --primary: #1A73E8;
+    --primary-dark: #0D47A1;
+    --primary-light: #E0F2FE;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: #F8FAFC;
+    color: #1e293b;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    overscroll-behavior-y: none;
+  }
+}
+
+/* Custom port brand classes */
+.bg-port-primary {
+  background-color: #1A73E8;
+}
+
+.bg-port-navy {
+  background-color: #0D47A1;
+}
+
+.bg-port-light {
+  background-color: #E0F2FE;
+}
+
+.text-port-primary {
+  color: #1A73E8;
+}
+
+.text-port-navy {
+  color: #0D47A1;
+}
+
+.border-port-light {
+  border-color: #E0F2FE;
+}
+
+/* Smooth Tab Fade-in Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+html, body, #root { min-width: 0; max-width: 100%; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+main { min-width: 0; }
+@media (max-width: 639px) {
+  table { font-size: 12px; }
+  .overflow-x-auto { max-width: 100%; overscroll-behavior-x: contain; }
+}

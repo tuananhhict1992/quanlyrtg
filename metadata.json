@@ -1,0 +1,10 @@
+{
+  "name": "Quản trị Nhân sự & Vận hành Nội bộ",
+  "description": "Hệ thống quản lý thông tin nhân sự, đăng ký nghỉ phép trên bảng lịch, quy chuẩn hệ số đánh giá năng lực toàn bộ nhân viên, bình xét xếp loại và điều hành nội bộ.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
