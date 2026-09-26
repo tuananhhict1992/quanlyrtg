@@ -19,7 +19,7 @@
 - Giao bài qua transaction riêng: kiểm tra quyền, gửi riêng theo recipientIds, khóa chính ổn định theo đề/người chống trùng. Kiểm thử 76 người mỗi người thấy đúng một thông báo; người ngoài không thấy; retry giữ trạng thái đã đọc; lỗi ghi queue rollback cả lần gửi.
 - Chốt bình xét và cập nhật hồ sơ nhân viên trong cùng transaction. Kiểm thử lỗi ghi hồ sơ xác nhận rollback toàn bộ; gửi lại nội dung không tạo biên bản, audit hay đánh giá tháng trùng.
 - Kiểm thử worker mô phỏng upload Drive thành công nhưng mất phản hồi: dữ liệu/tệp tạm giữ nguyên khi failed; Retry dùng cùng file ID rồi mới xóa tệp tạm.
-- Migrations thực thi trên PGlite/PostgreSQL local; RLS bật ở tất cả 10 bảng ứng dụng (bảng schema_migrations khi triển khai cũng bật RLS).
+- Migrations thực thi trên PGlite/PostgreSQL local; RLS bật ở tất cả 11 bảng ứng dụng, gồm bảng kết nối Google (bảng schema_migrations khi triển khai cũng bật RLS).
 - 10 kiểm thử Chrome đã pass với bản build production: đăng nhập và màn hình dữ liệu/admin ở 390, 768, 1366, 1920px; mở từng menu; Preview/Confirm từ Nhân sự và Vi phạm trên mobile; tải ảnh Drive qua API xác thực; giao bài chờ lưu thành công, báo lỗi/retry/khóa nút trong lúc gửi; xem A4 biên bản cũ loại bỏ a. API fixture, không dữ liệu người dùng thật.
 - Các nút Google cũ dùng hàng đợi backend, hiển thị trạng thái đã xếp hàng. Nhập lịch sử lấy phiên bản cuối và không khôi phục bản ghi đã được đánh dấu xóa.
 - npm audit sau cập nhật dependency: 0 lỗ hổng tại thời điểm kiểm tra.
@@ -39,6 +39,8 @@
 - Cấu hình `TRUST_PROXY_HOPS=1` cho ingress AI Studio, mặc định local là 0. Log lỗi backend chỉ ghi mã lỗi đã lọc, không ghi chuỗi kết nối hay secret. Navbar/Sidebar không truyền chuỗi rỗng vào ảnh đại diện.
 
 ## Cần hoàn tất trên môi trường thực
+
+Mã cập nhật Google OAuth và điều khiển hàng đợi đã lưu vào AI Studio, đẩy lên GitHub `main` (commit `b26a3c8`). Preview dùng phiên admin thật đã tải Google Sync, đọc hàng đợi từ PostgreSQL; nút kết nối đang khóa đúng khi chưa có OAuth client. Đã sửa cảnh báo ảnh đại diện rỗng ở màn hình phân quyền. Lần Republish bản này bị AI Studio từ chối với `Resource 'quanlyrtg' already exists`; luồng quay lại cũng hiển thị giới hạn 2 app miễn phí. Chưa xóa, unpublish hay nâng gói. Bản web cũ vẫn trả `/api/health` 200 và `/api/me` 401 khi không đăng nhập; callback OAuth mới chưa hoạt động trên production. Cần hoàn tất cấu hình OAuth và giải quyết cập nhật đúng dịch vụ đã tồn tại trước khi xác nhận Google Sync hoạt động thật.
 
 AI Studio đã Publish thành công ngày 26/09/2026, trạng thái Ready. URL chính thức: https://quanlyrtg-290449474780.asia-southeast1.run.app/. Đã kiểm tra HTTPS, trang đăng nhập trả 200, `/api/health` trả 200 với status ok, `/api/me` không xác thực trả 401. Production có CSP và HSTS, trang đăng nhập chưa ghi nhận lỗi JavaScript. Site URL Supabase Auth đã cập nhật theo URL chính thức. Đăng nhập admin đã kiểm chứng trên Preview; cần người dùng nhập mật khẩu trực tiếp để xác nhận phiên mới trên tên miền production.
 
