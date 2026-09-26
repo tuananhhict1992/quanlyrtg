@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import { requireAuth } from "./backend/auth";
 import { recordsRouter } from "./backend/records";
 import { googleRouter } from "./backend/google-routes";
+import { finishGoogleOAuth } from "./backend/google-oauth";
 import { filesRouter, validateFile } from "./backend/files";
 import { examsRouter } from "./backend/exams";
 import { operationsRouter } from "./backend/operations";
@@ -21,7 +22,11 @@ dotenv.config();
 export const app = express();
 app.disable("x-powered-by");
 const trustedProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
-if (!Number.isInteger(trustedProxyHops) || trustedProxyHops < 0 || trustedProxyHops > 10)
+if (
+  !Number.isInteger(trustedProxyHops) ||
+  trustedProxyHops < 0 ||
+  trustedProxyHops > 10
+)
   throw new Error("TRUST_PROXY_HOPS must be an integer between 0 and 10.");
 app.set("trust proxy", trustedProxyHops);
 app.use(
@@ -57,6 +62,7 @@ app.use(
     legacyHeaders: false,
   }),
 );
+app.get("/api/google/oauth/callback", asyncRoute(finishGoogleOAuth));
 app.use("/api", requireAuth);
 const PORT = Number(process.env.PORT) || 3000;
 

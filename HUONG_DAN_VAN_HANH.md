@@ -4,7 +4,7 @@ Ngày cập nhật: 26/09/2026. Project đã chọn: **quanlyrtghict — utcpdfi
 
 **Web chính thức:** [Mở hệ thống RTG](https://quanlyrtg-290449474780.asia-southeast1.run.app/). AI Studio đã Publish thành công, trạng thái Ready. Dùng email/mật khẩu Supabase đã được cấp quyền; Google Workspace cần cấu hình OAuth riêng.
 
-Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét, thông báo giao bài. Cập nhật 26/09/2026: migration đã được áp dụng lên project `quanlyrtghict` (`utcpdfiyaqnimdasttak`), 11 bảng đều bật RLS và Realtime đã cấu hình. Admin đầu tiên đã được tạo trong Supabase Auth và liên kết hồ sơ `RTG-ADMIN` (ADMIN, ACTIVE). Bản Google AI Studio Preview đã đăng nhập thành công, tải màn hình quản trị từ database thật và ghi audit `login`. Bản chính thức đã tải màn hình đăng nhập, health trả 200 và API tài khoản trả 401 khi chưa xác thực. Máy local hiện chưa có `.env`; Google Drive/Sheets chưa kết nối.
+Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét, thông báo giao bài. Cập nhật 26/09/2026: migration đã được áp dụng lên project `quanlyrtghict` (`utcpdfiyaqnimdasttak`), 12 bảng đều bật RLS và Realtime đã cấu hình. Admin đầu tiên đã được tạo trong Supabase Auth và liên kết hồ sơ `RTG-ADMIN` (ADMIN, ACTIVE). Bản Google AI Studio Preview đã đăng nhập thành công, tải màn hình quản trị từ database thật và ghi audit `login`. Bản chính thức đã tải màn hình đăng nhập, health trả 200 và API tài khoản trả 401 khi chưa xác thực. Máy local hiện chưa có `.env`; Google Drive/Sheets chưa kết nối.
 
 Đối với bản AI Studio hiện tại, URL, publishable key, `DATABASE_URL` và `TRUST_PROXY_HOPS=1` đã được cấu hình trong Secrets. Kết nối database sử dụng Session pooler, kiểm tra TLS đầy đủ và chứng chỉ CA tại `supabase/certs/prod-ca-2021.txt`. Không nhập lại mật khẩu hoặc bootstrap admin khi không cần. Migration đã có ledger nên không cần dán lại SQL tạo bảng; bước 3 dùng để áp dụng migration mới khi có thay đổi. Bản nhập vào AI Studio không tự đồng bộ với GitHub.
 
@@ -116,11 +116,30 @@ Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét
 
    Admin vào Phân quyền để cấp các nghiệp vụ cần thiết. Thử bằng một tài khoản nhân viên thường để xác nhận quyền xem/sửa. Quyền người dùng được kiểm tra lại ở Node, không chỉ dựa vào việc ẩn menu. Không lưu mật khẩu nhân viên trong Excel, Sheets hoặc hồ sơ.
 
-7. **Chuẩn bị Google Drive và Google Sheets**
+7. **Kết nối Google Drive và Google Sheets**
 
-   Bản tích hợp hiện dùng **service account**. Trong [Google Cloud Console](https://console.cloud.google.com/), chọn/tạo project; vào APIs & Services, bật **Google Drive API** và **Google Sheets API**. Tạo service account ở IAM & Admin → Service Accounts; tạo khóa JSON nếu chính sách tổ chức cho phép. Giữ khóa này riêng trên server, không đặt trong thư mục public.
+   Bản cập nhật hỗ trợ OAuth của admin cho Gmail cá nhân. Drive API và Sheets API đã bật trong project `gen-lang-client-0409878770`; cấu hình OAuth client và cấp quyền kho còn chờ hoàn tất. Đăng nhập Google qua Supabase và cấp quyền kho Drive là hai bước riêng. Nhân viên đăng nhập không phải cấp quyền Drive.
 
-   Trong Google Workspace, tạo thư mục tên chính xác **RTG_SYSTEM** bên trong **Shared Drive**. Thêm email service account làm thành viên có quyền tạo/ghi tệp và thư mục, ví dụ Contributor nếu chính sách tổ chức cho phép. Service account không có dung lượng để sở hữu tệp trong My Drive; nếu bạn chỉ có Gmail cá nhân, cần Shared Drive từ tổ chức hoặc bổ sung luồng OAuth người dùng vào mã nguồn trước khi dùng kho cá nhân. [Giải thích chính thức của Google](https://developers.google.com/workspace/drive/api/guides/about-shareddrives).
+   Tạo OAuth client loại **Web application**, origin `https://quanlyrtg-290449474780.asia-southeast1.run.app`, với hai redirect URI chính xác:
+
+   ```text
+   https://utcpdfiyaqnimdasttak.supabase.co/auth/v1/callback
+   https://quanlyrtg-290449474780.asia-southeast1.run.app/api/google/oauth/callback
+   ```
+
+   Lưu Client ID và Client Secret trong Supabase Authentication → Providers → Google để bật đăng nhập Google. Trong **AI Studio Secrets**, thêm `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` và `PUBLIC_APP_URL=https://quanlyrtg-290449474780.asia-southeast1.run.app`. Không thêm các khóa này vào `VITE_*`, GitHub hoặc chat. Giữ nguyên cấu hình Supabase hiện có và `RUN_SYNC_WORKER=false` trên Cloud Run.
+
+   Republish bản cập nhật. Đăng nhập admin trên website chính thức, vào **Phân quyền → Google Sync → Kết nối Google Drive**. Chọn đúng email admin đã liên kết, đồng ý quyền `drive.file` và truy cập offline. RTG tự tạo thư mục **RTG_SYSTEM**, Spreadsheet **RTG_ARCHIVE**, các thư mục con và tab bên dưới. Không cần nhập folder ID/spreadsheet ID cho phương án OAuth.
+
+   Refresh token được mã hóa AES-256-GCM trong `private.google_connections`, client không được đọc bảng này. Không thay Client Secret tùy tiện: khóa này cũng dùng bảo vệ token đã lưu; khi thay cần kết nối lại Google. OAuth callback chỉ nhận phiên admin còn quyền, kiểm tra state, PKCE, hạn 10 phút và đúng email. Kho đã liên kết không tự chuyển sang Google account khác.
+
+   Khi Google Auth Platform còn ở chế độ Testing, thêm email admin vào Test users. Token offline có thể hết hạn sau 7 ngày với quyền Drive; hoàn tất cấu hình audience/consent phù hợp trước vận hành dài hạn. Không mở quyền đọc toàn bộ Drive chỉ để bỏ lỗi consent. [Vòng đời refresh token của Google](https://developers.google.com/identity/protocols/oauth2#expiration).
+
+   **Phương án service account cho tổ chức có Shared Drive:**
+
+   Nếu không cấu hình ba biến OAuth ở trên, ứng dụng vẫn hỗ trợ **service account**. Trong [Google Cloud Console](https://console.cloud.google.com/), chọn project; bật **Google Drive API** và **Google Sheets API**. Tạo service account ở IAM & Admin → Service Accounts; tạo khóa JSON nếu chính sách tổ chức cho phép. Giữ khóa này riêng trên server, không đặt trong thư mục public.
+
+   Trong Google Workspace, tạo thư mục tên chính xác **RTG_SYSTEM** bên trong **Shared Drive**. Thêm email service account làm thành viên có quyền tạo/ghi tệp và thư mục, ví dụ Contributor nếu chính sách tổ chức cho phép. Service account không có dung lượng để sở hữu tệp trong My Drive; Gmail cá nhân dùng OAuth ở trên. [Giải thích chính thức của Google](https://developers.google.com/workspace/drive/api/guides/about-shareddrives).
 
    Tạo một Google Spreadsheet dành riêng cho báo cáo RTG, cấp quyền chỉnh sửa cho email service account. Lấy hai ID:
 
@@ -158,7 +177,9 @@ Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét
 
 8. **Bật xử lý hàng đợi**
 
-   Cho lần chạy đầu trên một máy, đổi `RUN_SYNC_WORKER=true` trong `.env`, khởi động lại server bằng `npm.cmd start` trong terminal có `NODE_ENV=production`. Worker sẽ chạy cùng server.
+   **Cloud Run hiện tại:** giữ `RUN_SYNC_WORKER=false`. Trong Google Sync, các nút Đồng bộ báo cáo, Backup và Retry Sync xử lý tối đa 25 tác vụ mỗi lần, tuần tự trong HTTP request. Giữ trang mở trong lúc chạy; bấm **Xử lý hàng đợi** tiếp nếu vẫn còn pending. Cách này tránh phụ thuộc CPU khi Cloud Run không có request. Tác vụ do các module khác xếp hàng cũng được xử lý tại đây. Chưa thiết lập dịch vụ worker chạy liên tục hoặc lịch tự động trên môi trường này.
+
+   **Máy chủ có CPU chạy liên tục:** đổi `RUN_SYNC_WORKER=true` trong `.env`, khởi động lại server bằng `npm.cmd start` trong terminal có `NODE_ENV=production`. Worker sẽ chạy cùng server.
 
    Nếu vận hành worker riêng, giữ `RUN_SYNC_WORKER=false` cho web và mở terminal thứ hai trong thư mục project:
 
@@ -208,8 +229,8 @@ Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét
     | Lỗi password authentication / timeout DB | DATABASE_URL, mật khẩu DB, encode ký tự, project đang hoạt động, Direct/Session pooler và mạng |
     | SELF_SIGNED_CERT_IN_CHAIN | File CA có trong bản triển khai, đường dẫn sslrootcert đúng, dùng sslmode=verify-full; không tắt xác minh chứng chỉ |
     | Unsupported provider: provider is not enabled | Dùng email/mật khẩu; nút Google Workspace cần cấu hình Google OAuth riêng |
-    | Google 403/404 | API đã bật, service account có quyền Shared Drive/Spreadsheet, đúng folder ID và spreadsheet ID |
-    | Queue luôn pending | Worker có chạy và có kết nối DB không; kiểm tra log |
+    | Google 403/404 | API đã bật, OAuth đã cấp quyền drive.file, token còn hiệu lực; nếu dùng service account thì kiểm tra quyền Shared Drive/Spreadsheet |
+    | Queue luôn pending | Trên Cloud Run bấm Xử lý hàng đợi trong Google Sync; với server liên tục kiểm tra worker và kết nối DB |
     | Queue failed | Xem lỗi từng job, sửa nguyên nhân, Retry; không xóa dữ liệu nghiệp vụ/file tạm |
     | EADDRINUSE:3000 | Một tiến trình đang dùng cổng 3000; dừng đúng tiến trình app cũ rồi chạy lại |
     | Mở được health nhưng không đăng nhập/lưu được | `/api/health` chỉ xác nhận Node còn chạy, không xác nhận DB/Google |

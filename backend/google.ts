@@ -2,35 +2,29 @@ import { google } from "googleapis";
 import { Readable } from "node:stream";
 import { FOLDERS, SHEET_TABS } from "./security";
 import { HttpError } from "./db";
-export function googleClients() {
+import {
+  googleConnection,
+  googleOAuthConfigured,
+  readGoogleConnection,
+} from "./google-connection";
+export async function googleClients() {
   google.options({ timeout: 30000, retry: false });
-  const email = process.env.GOOGLE_CLIENT_EMAIL,
-    key = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-  if (
-    !email ||
-    !key ||
-    !process.env.GOOGLE_DRIVE_ROOT_ID ||
-    !process.env.GOOGLE_SPREADSHEET_ID
-  )
-    throw new HttpError(503, "Chưa cấu hình Google Workspace trên server.");
-  const auth = new google.auth.JWT({
-    email,
-    key,
-    scopes: [
-      "https://www.googleapis.com/auth/drive",
-      "https://www.googleapis.com/auth/spreadsheets",
-    ],
-  });
+  const { auth } = await googleConnection();
   return {
     drive: google.drive({ version: "v3", auth }),
     sheets: google.sheets({ version: "v4", auth }),
   };
 }
-export const spreadsheetId = () => process.env.GOOGLE_SPREADSHEET_ID!;
+// Queuing a report must not depend on Google being configured or reachable.
+export const spreadsheetId = async () =>
+  googleOAuthConfigured()
+    ? (await readGoogleConnection())?.spreadsheet_id || ""
+    : process.env.GOOGLE_SPREADSHEET_ID || "";
+export const driveRootId = async () => (await googleConnection()).rootId;
 const escaped = (s: string) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 export async function ensureStructure() {
-  const { drive, sheets } = googleClients();
-  const root = process.env.GOOGLE_DRIVE_ROOT_ID!;
+  const { drive, sheets } = await googleClients();
+  const root = await driveRootId();
   const rootInfo = await drive.files.get({
     fileId: root,
     fields: "id,name,mimeType",
@@ -67,7 +61,7 @@ export async function ensureStructure() {
       ).data.id!;
   }
   const meta = await sheets.spreadsheets.get({
-      spreadsheetId: spreadsheetId(),
+      spreadsheetId: await spreadsheetId(),
       fields: "sheets.properties.title",
     }),
     names = new Set(meta.data.sheets?.map((s) => s.properties?.title));
@@ -76,7 +70,7 @@ export async function ensureStructure() {
   );
   if (missing.length)
     await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: spreadsheetId(),
+      spreadsheetId: await spreadsheetId(),
       requestBody: {
         requests: missing.map((title) => ({
           addSheet: { properties: { title } },
@@ -86,8 +80,8 @@ export async function ensureStructure() {
   return folders;
 }
 export async function assertInRoot(fileId: string) {
-  const { drive } = googleClients();
-  const root = process.env.GOOGLE_DRIVE_ROOT_ID;
+  const { drive } = await googleClients();
+  const root = await driveRootId();
   let id = fileId;
   for (let i = 0; i < 30; i++) {
     if (id === root) return;
@@ -108,7 +102,7 @@ export async function archiveToDrive(
   folder: string,
   body: Buffer,
 ) {
-  const { drive } = googleClients();
+  const { drive } = await googleClients();
   try {
     const existing = await drive.files.get({
       fileId: id,
@@ -130,7 +124,9 @@ export async function archiveToDrive(
 }
 export async function reserveDriveId() {
   return (
-    await googleClients().drive.files.generateIds({
+    await (
+      await googleClients()
+    ).drive.files.generateIds({
       count: 1,
       space: "drive",
       type: "files",
@@ -138,9 +134,9 @@ export async function reserveDriveId() {
   ).data.ids![0];
 }
 export async function ensureSheetRows(tab: string, row: number) {
-  const { sheets } = googleClients();
+  const { sheets } = await googleClients();
   const { data } = await sheets.spreadsheets.get({
-    spreadsheetId: spreadsheetId(),
+    spreadsheetId: await spreadsheetId(),
     fields: "sheets.properties",
   });
   const found = data.sheets?.find(
@@ -149,7 +145,7 @@ export async function ensureSheetRows(tab: string, row: number) {
   if (!found) throw new HttpError(409, "Chưa khởi tạo tab báo cáo.");
   if ((found.gridProperties?.rowCount || 0) < row)
     await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: spreadsheetId(),
+      spreadsheetId: await spreadsheetId(),
       requestBody: {
         requests: [
           {

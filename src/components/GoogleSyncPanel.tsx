@@ -8,6 +8,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
+    [connection, setConnection] = useState<any>(null),
     [preview, setPreview] = useState<any>(null),
     [module, setModule] = useState("employees"),
     [busy, setBusy] = useState(false);
@@ -19,6 +20,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
     setError("");
     try {
       setJobs(await api("/google/jobs?page=" + page));
+      setConnection(await api("/google/connection"));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -29,6 +31,15 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
     if (allowed) void load();
   }, [page, allowed]);
   if (!allowed) return null;
+  const runQueuedJobs = async () => {
+    for (let count = 0; count < 25; count++) {
+      setNotice(`Đang xử lý hàng đợi Google (${count + 1})… Giữ trang này mở.`);
+      const result = await api<{ processed: boolean }>("/google/process-next", {
+        method: "POST",
+      });
+      if (!result.processed) break;
+    }
+  };
   const act = async (fn: () => Promise<any>, message: string) => {
     setBusy(true);
     setError("");
@@ -53,6 +64,68 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
         Dữ liệu nghiệp vụ được lưu tại PostgreSQL. Google lỗi không làm mất bản
         ghi đã lưu.
       </p>
+      <div className="rounded-lg bg-slate-50 p-3 space-y-2 text-sm">
+        <p>
+          {connection?.connected
+            ? `Đã liên kết kho Google: ${connection.email}`
+            : "Chưa liên kết kho Google của admin."}
+        </p>
+        {connection?.folderUrl && (
+          <a
+            className="text-indigo-700 underline mr-4"
+            href={connection.folderUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Mở RTG_SYSTEM
+          </a>
+        )}
+        {connection?.spreadsheetUrl && (
+          <a
+            className="text-indigo-700 underline"
+            href={connection.spreadsheetUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Mở báo cáo Sheets
+          </a>
+        )}
+        <p>
+          Đăng nhập Google và quyền lưu trữ là hai bước riêng. Chỉ admin kết nối
+          kho; dữ liệu gốc vẫn ở PostgreSQL.
+        </p>
+        <button
+          disabled={busy || !connection?.oauthAvailable}
+          className="px-3 py-2 border rounded-lg disabled:opacity-50"
+          onClick={() => {
+            if (
+              !confirm(
+                "Kết nối tài khoản Google của admin để RTG tạo thư mục và file báo cáo?",
+              )
+            )
+              return;
+            void act(async () => {
+              const { url } = await api<{ url: string }>(
+                "/google/oauth/start",
+                { method: "POST" },
+              );
+              const target = new URL(url);
+              if (target.origin !== "https://accounts.google.com")
+                throw new Error("Địa chỉ xác thực Google không hợp lệ.");
+              window.location.assign(url);
+            }, "Đang mở trang cấp quyền Google…");
+          }}
+        >
+          {connection?.connected
+            ? "Kết nối lại Google Drive"
+            : "Kết nối Google Drive"}
+        </button>
+        {connection && !connection.oauthAvailable && (
+          <p>
+            Quản trị triển khai cần cấu hình Google OAuth trên server trước.
+          </p>
+        )}
+      </div>
       {error && (
         <p role="alert" className="text-red-700 bg-red-50 p-3 rounded-lg">
           {error}
@@ -84,10 +157,10 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
           className="px-3 py-2 border rounded-lg"
           onClick={() => {
             if (confirm("Đưa dữ liệu hiện tại vào hàng đợi báo cáo?"))
-              void act(
-                () => api("/google/sync", { method: "POST", body: "{}" }),
-                "Đã xếp hàng đồng bộ.",
-              );
+              void act(async () => {
+                await api("/google/sync", { method: "POST", body: "{}" });
+                await runQueuedJobs();
+              }, "Đã chạy đồng bộ. Kiểm tra trạng thái từng tác vụ bên dưới; có thể bấm xử lý tiếp nếu còn pending.");
           }}
         >
           Đồng bộ báo cáo
@@ -97,13 +170,25 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
           className="px-3 py-2 border rounded-lg"
           onClick={() => {
             if (confirm("Tạo bản sao lưu dữ liệu lên Drive?"))
-              void act(
-                () => api("/operations/backup", { method: "POST" }),
-                "Đã xếp hàng sao lưu lên 10_BACKUP.",
-              );
+              void act(async () => {
+                await api("/operations/backup", { method: "POST" });
+                await runQueuedJobs();
+              }, "Đã chạy sao lưu. Kiểm tra kết quả tác vụ bên dưới.");
           }}
         >
           Backup
+        </button>
+        <button
+          disabled={busy}
+          className="px-3 py-2 border rounded-lg"
+          onClick={() =>
+            void act(
+              runQueuedJobs,
+              "Đã xử lý một đợt hàng đợi. Kiểm tra trạng thái bên dưới.",
+            )
+          }
+        >
+          Xử lý hàng đợi
         </button>
         <button
           disabled={loading}
@@ -223,13 +308,12 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
                   disabled={busy}
                   className="mt-2 border rounded-lg px-3 py-1"
                   onClick={() =>
-                    void act(
-                      () =>
-                        api("/google/jobs/" + j.job_id + "/retry", {
-                          method: "POST",
-                        }),
-                      "Đã đưa tác vụ về pending.",
-                    )
+                    void act(async () => {
+                      await api("/google/jobs/" + j.job_id + "/retry", {
+                        method: "POST",
+                      });
+                      await runQueuedJobs();
+                    }, "Đã chạy lại hàng đợi. Kiểm tra kết quả bên dưới.")
                   }
                 >
                   Retry Sync

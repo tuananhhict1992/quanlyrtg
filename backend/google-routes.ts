@@ -6,7 +6,15 @@ import {
   spreadsheetId,
   ensureStructure,
   assertInRoot,
+  driveRootId,
 } from "./google";
+import {
+  googleConnection,
+  googleOAuthConfigured,
+  readGoogleConnection,
+} from "./google-connection";
+import { startGoogleOAuth } from "./google-oauth";
+import { processNextJob } from "./worker";
 import {
   assertPermission,
   checksum,
@@ -18,19 +26,63 @@ import {
 import { enqueue, audit, writeRecord } from "./records";
 import { parseReportRows } from "./report-import";
 export const googleRouter = Router();
+googleRouter.post("/oauth/start", asyncRoute(startGoogleOAuth));
+googleRouter.get(
+  "/connection",
+  asyncRoute(async (req, res) => {
+    assertPermission(req.user, "MANAGE_PERMISSIONS");
+    const ready = googleOAuthConfigured();
+    const row = ready
+      ? await readGoogleConnection()
+      : process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY
+        ? {
+            root_id: process.env.GOOGLE_DRIVE_ROOT_ID,
+            spreadsheet_id: process.env.GOOGLE_SPREADSHEET_ID,
+            email: process.env.GOOGLE_CLIENT_EMAIL,
+          }
+        : null;
+    res.json({
+      oauthAvailable: ready,
+      connected: !!(row?.root_id && row?.spreadsheet_id),
+      email: row?.email || null,
+      folderUrl: row?.root_id
+        ? `https://drive.google.com/drive/folders/${row.root_id}`
+        : null,
+      spreadsheetUrl: row?.spreadsheet_id
+        ? `https://docs.google.com/spreadsheets/d/${row.spreadsheet_id}/edit`
+        : null,
+    });
+  }),
+);
+// Await a whole job while the HTTP request is active; Cloud Run may suspend idle CPU.
+googleRouter.post(
+  "/process-next",
+  asyncRoute(async (req, res) => {
+    assertPermission(req.user, "MANAGE_PERMISSIONS");
+    await googleClients();
+    res.json({ processed: await processNextJob() });
+  }),
+);
 googleRouter.get(
   "/status",
   asyncRoute(async (req, res) => {
     assertPermission(req.user, "MANAGE_DRIVE");
-    googleClients();
+    const connection = await googleConnection();
+    await (
+      await googleClients()
+    ).drive.files.get({
+      fileId: connection.rootId,
+      fields: "id",
+      supportsAllDrives: true,
+    });
     res.json({
       connected: true,
       user: {
         displayName: "RTG Workspace",
-        email: process.env.GOOGLE_CLIENT_EMAIL,
+        email: connection.email,
       },
-      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId()}/edit`,
-      spreadsheetId: spreadsheetId(),
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${await spreadsheetId()}/edit`,
+      spreadsheetId: await spreadsheetId(),
     });
   }),
 );
@@ -43,8 +95,8 @@ googleRouter.post(
       await db.query("select pg_advisory_lock(726447)");
       res.json({
         folders: await ensureStructure(),
-        id: spreadsheetId(),
-        url: `https://docs.google.com/spreadsheets/d/${spreadsheetId()}/edit`,
+        id: await spreadsheetId(),
+        url: `https://docs.google.com/spreadsheets/d/${await spreadsheetId()}/edit`,
         title: "RTG_SYSTEM",
       });
     } finally {
@@ -117,7 +169,7 @@ googleRouter.post(
       success: true,
       totalRows: total,
       updatedRows: total,
-      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId()}/edit`,
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${await spreadsheetId()}/edit`,
       sheetStats: [],
       message:
         "Đã đưa dữ liệu PostgreSQL vào hàng đợi. Xem trạng thái tại Google Sync.",
@@ -131,8 +183,10 @@ googleRouter.post(
     assertPermission(req.user, MODULE_PERMISSIONS[module]);
     const tab = SHEET_TABS[module];
     if (!tab) throw new HttpError(400, "Phân hệ không hỗ trợ nhập báo cáo.");
-    const { data } = await googleClients().sheets.spreadsheets.values.get({
-      spreadsheetId: spreadsheetId(),
+    const { data } = await (
+      await googleClients()
+    ).sheets.spreadsheets.values.get({
+      spreadsheetId: await spreadsheetId(),
       range: `'${tab}'!A1:F10002`,
     });
     const deduped = parseReportRows(data.values || []);
@@ -190,8 +244,10 @@ googleRouter.get(
     const module = validModule(String(req.query.module));
     const tab = SHEET_TABS[module];
     if (!tab) throw new HttpError(400, "Tab không hợp lệ.");
-    const result = await googleClients().sheets.spreadsheets.values.get({
-      spreadsheetId: spreadsheetId(),
+    const result = await (
+      await googleClients()
+    ).sheets.spreadsheets.values.get({
+      spreadsheetId: await spreadsheetId(),
       range: `'${tab}'!A1:F1001`,
     });
     res.json(result.data.values || []);
@@ -203,11 +259,13 @@ googleRouter.get(
     assertPermission(req.user, "MANAGE_DRIVE");
     const parent =
       req.query.parent === "root" || !req.query.parent
-        ? process.env.GOOGLE_DRIVE_ROOT_ID!
+        ? await driveRootId()
         : String(req.query.parent);
     await assertInRoot(parent);
     const q = `'${parent.replace(/'/g, "\\'")}' in parents and trashed=false`;
-    const { data } = await googleClients().drive.files.list({
+    const { data } = await (
+      await googleClients()
+    ).drive.files.list({
       q,
       pageSize: 100,
       pageToken: req.query.cursor ? String(req.query.cursor) : undefined,
@@ -230,14 +288,14 @@ googleRouter.post(
   asyncRoute(async (req, res) => {
     assertPermission(req.user, "MANAGE_DRIVE");
     const parent =
-      req.body.parentId === "root"
-        ? process.env.GOOGLE_DRIVE_ROOT_ID
-        : req.body.parentId;
+      req.body.parentId === "root" ? await driveRootId() : req.body.parentId;
     await assertInRoot(parent);
     const name = String(req.body.name || "").trim();
     if (!name || name.length > 100)
       throw new HttpError(400, "Tên thư mục không hợp lệ.");
-    const { data } = await googleClients().drive.files.create({
+    const { data } = await (
+      await googleClients()
+    ).drive.files.create({
       requestBody: {
         name,
         parents: [parent],
@@ -261,7 +319,7 @@ googleRouter.get(
   asyncRoute(async (req, res) => {
     assertPermission(req.user, "MANAGE_DRIVE");
     await assertInRoot(req.params.id);
-    const { drive } = googleClients();
+    const { drive } = await googleClients();
     const meta = (
       await drive.files.get({
         fileId: req.params.id,
@@ -297,9 +355,11 @@ googleRouter.delete(
   asyncRoute(async (req, res) => {
     assertPermission(req.user, "MANAGE_DRIVE");
     await assertInRoot(req.params.id);
-    if (req.params.id === process.env.GOOGLE_DRIVE_ROOT_ID)
+    if (req.params.id === (await driveRootId()))
       throw new HttpError(403, "Không xóa thư mục gốc.");
-    await googleClients().drive.files.update({
+    await (
+      await googleClients()
+    ).drive.files.update({
       fileId: req.params.id,
       requestBody: { trashed: true },
       supportsAllDrives: true,

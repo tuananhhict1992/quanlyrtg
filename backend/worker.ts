@@ -46,10 +46,10 @@ export async function processNextJob(adapters = services) {
     if (!job?.job_id) return false;
     try {
       const folders = await ensureStructure();
-      const { sheets } = googleClients();
+      const { sheets } = await googleClients();
       await ensureSheetRows("SYNC_LOG", Number(job.sequence) + 1);
       await sheets.spreadsheets.values.update({
-        spreadsheetId: spreadsheetId(),
+        spreadsheetId: await spreadsheetId(),
         range: "'SYNC_LOG'!A1:F1",
         valueInputOption: "RAW",
         requestBody: {
@@ -90,7 +90,7 @@ export async function processNextJob(adapters = services) {
           temp.bytes,
         );
         await sheets.spreadsheets.values.update({
-          spreadsheetId: spreadsheetId(),
+          spreadsheetId: await spreadsheetId(),
           range: `'SYNC_LOG'!A${Number(job.sequence) + 1}:F${Number(job.sequence) + 1}`,
           valueInputOption: "RAW",
           requestBody: {
@@ -242,7 +242,7 @@ export async function processNextJob(adapters = services) {
         }
         await ensureSheetRows(tab, Number(job.sheet_row));
         await sheets.spreadsheets.values.update({
-          spreadsheetId: spreadsheetId(),
+          spreadsheetId: await spreadsheetId(),
           range: `'${tab}'!A1:F1`,
           valueInputOption: "RAW",
           requestBody: {
@@ -264,7 +264,7 @@ export async function processNextJob(adapters = services) {
             "Bản ghi vượt giới hạn ô Sheets. Xuất tệp báo cáo lên Drive.",
           );
         await sheets.spreadsheets.values.update({
-          spreadsheetId: spreadsheetId(),
+          spreadsheetId: await spreadsheetId(),
           range: `'${tab}'!A${job.sheet_row}:F${job.sheet_row}`,
           valueInputOption: "RAW",
           requestBody: {
@@ -281,7 +281,7 @@ export async function processNextJob(adapters = services) {
           },
         });
         await sheets.spreadsheets.values.update({
-          spreadsheetId: spreadsheetId(),
+          spreadsheetId: await spreadsheetId(),
           range: `'SYNC_LOG'!A${Number(job.sequence) + 1}:E${Number(job.sequence) + 1}`,
           valueInputOption: "RAW",
           requestBody: {

@@ -101,7 +101,9 @@ filesRouter.get(
       req.user,
       req.params.driveFileId,
     );
-    const result = await googleClients().drive.files.get(
+    const result = await (
+      await googleClients()
+    ).drive.files.get(
       { fileId: req.params.driveFileId, alt: "media", supportsAllDrives: true },
       { responseType: "stream" },
     );
