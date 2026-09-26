@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { api } from "../services/supabase";
+import { connectGoogleDriveStorage } from "../services/googleDriveAuth";
 import { formatDate } from "../utils/date";
 import type { Employee } from "../types";
 export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
@@ -104,22 +105,16 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
               )
             )
               return;
-            void act(async () => {
-              const { url } = await api<{ url: string }>(
-                "/google/oauth/start",
-                { method: "POST" },
-              );
-              const target = new URL(url);
-              if (target.origin !== "https://accounts.google.com")
-                throw new Error("Địa chỉ xác thực Google không hợp lệ.");
-              window.location.assign(url);
-            }, "Đang mở trang cấp quyền Google…");
+            void act(connectGoogleDriveStorage, "Đang mở trang cấp quyền Google…");
           }}
         >
           {connection?.connected
             ? "Kết nối lại Google Drive"
             : "Kết nối Google Drive"}
         </button>
+        {connection?.oauthAppUrl && connection.oauthAppUrl !== location.origin && (
+          <p>Kết nối kho Google sẽ mở website chính thức; hãy đăng nhập admin tại đó.</p>
+        )}
         {connection && !connection.oauthAvailable && (
           <p>
             Quản trị triển khai cần cấu hình Google OAuth trên server trước.

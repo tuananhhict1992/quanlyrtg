@@ -7,7 +7,7 @@ process.env.PUBLIC_APP_URL = "https://rtg.example.test";
 process.env.GOOGLE_OAUTH_CLIENT_ID = "test-client.apps.googleusercontent.com";
 process.env.GOOGLE_OAUTH_CLIENT_SECRET =
   "test-only-client-secret-with-adequate-length";
-const { sealGoogleValue, openGoogleValue } =
+const { sealGoogleValue, openGoogleValue, googleOAuthOrigin } =
   await import("../backend/google-connection");
 const { startGoogleOAuth, validateGoogleState } =
   await import("../backend/google-oauth");
@@ -84,6 +84,25 @@ test("Google connection requires active admin, same origin, cookie state, expiry
   assert.equal(validateGoogleState(cookie, state).actorId, "admin");
   assert.throws(() => validateGoogleState(cookie, "wrong-state"));
   assert.throws(() => validateGoogleState(cookie, state, Date.now() + 601000));
+
+  process.env.GOOGLE_OAUTH_ALLOWED_ORIGINS = "https://rtg-alias.example.test";
+  try {
+    await startGoogleOAuth(
+      { ...req, headers: { origin: "https://rtg-alias.example.test" } },
+      res,
+    );
+    const aliasUrl = new URL(payload.url);
+    assert.equal(aliasUrl.searchParams.get("redirect_uri"),
+      "https://rtg-alias.example.test/api/google/oauth/callback");
+    assert.equal(validateGoogleState(cookie, aliasUrl.searchParams.get("state")).origin,
+      "https://rtg-alias.example.test");
+    assert.throws(() => googleOAuthOrigin("https://rtg-alias.example.test.evil.test"));
+    assert.throws(() => googleOAuthOrigin("https://rtg-alias.example.test/path"));
+    delete process.env.GOOGLE_OAUTH_ALLOWED_ORIGINS;
+    assert.throws(() => validateGoogleState(cookie, aliasUrl.searchParams.get("state")));
+  } finally {
+    delete process.env.GOOGLE_OAUTH_ALLOWED_ORIGINS;
+  }
 });
 
 test("OAuth callback rejects missing browser state and Google control APIs remain private", async () => {

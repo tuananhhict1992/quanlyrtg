@@ -11,6 +11,7 @@ import {
 import {
   googleConnection,
   googleOAuthConfigured,
+  googleAppOrigin,
   readGoogleConnection,
 } from "./google-connection";
 import { startGoogleOAuth } from "./google-oauth";
@@ -43,6 +44,7 @@ googleRouter.get(
         : null;
     res.json({
       oauthAvailable: ready,
+      oauthAppUrl: ready ? googleAppOrigin() : null,
       connected: !!(row?.root_id && row?.spreadsheet_id),
       email: row?.email || null,
       folderUrl: row?.root_id

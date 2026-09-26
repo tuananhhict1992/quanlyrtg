@@ -35,11 +35,24 @@ export function googleAppOrigin() {
     );
   return url.origin;
 }
-export function createGoogleOAuthClient() {
+export function googleOAuthOrigin(origin: unknown) {
+  const primary = googleAppOrigin();
+  const aliases = (process.env.GOOGLE_OAUTH_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (typeof origin !== "string" || ![primary, ...aliases].includes(origin))
+    throw new HttpError(403, "Hãy kết nối Google từ website chính thức.");
+  const url = new URL(origin);
+  if (url.protocol !== "https:" || url.origin !== origin)
+    throw new HttpError(403, "Địa chỉ kết nối Google không hợp lệ.");
+  return origin;
+}
+export function createGoogleOAuthClient(origin = googleAppOrigin()) {
   return new google.auth.OAuth2(
     process.env.GOOGLE_OAUTH_CLIENT_ID,
     process.env.GOOGLE_OAUTH_CLIENT_SECRET,
-    googleAppOrigin() + "/api/google/oauth/callback",
+    googleOAuthOrigin(origin) + "/api/google/oauth/callback",
   );
 }
 function encryptionKey(purpose: string) {

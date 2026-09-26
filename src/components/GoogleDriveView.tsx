@@ -23,6 +23,7 @@ import {
 import {
   auth,
   signInWithGoogleDrive,
+  connectGoogleDriveStorage,
   signOutGoogleDrive,
   fetchDriveFiles,
   createDriveFolder,
@@ -32,6 +33,7 @@ import {
   getCachedToken,
 } from '../services/googleDriveAuth';
 import { DriveFileItem, Employee } from '../types';
+import { api } from '../services/supabase';
 
 interface GoogleDriveViewProps {
   currentUser: Employee;
@@ -115,6 +117,14 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     setIsConnecting(true);
     setAuthError(null);
     try {
+      if (currentUser.role === 'ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_PERMISSIONS')) {
+        const connection = await api<{ connected: boolean; oauthAvailable: boolean }>('/google/connection');
+        if (!connection.connected && connection.oauthAvailable) {
+          if (!confirm('Kết nối tài khoản Google của admin để RTG tạo thư mục và file báo cáo?')) return;
+          await connectGoogleDriveStorage();
+          return;
+        }
+      }
       const { user } = await signInWithGoogleDrive();
       setGoogleUser(user);
       await loadFiles('root');

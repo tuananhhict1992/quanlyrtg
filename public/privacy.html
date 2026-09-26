@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quyền riêng tư — RTG System</title>
+  <style>
+    body{margin:0;background:#f8fafc;color:#172033;font:16px/1.7 system-ui,sans-serif}
+    main{max-width:760px;margin:40px auto;padding:28px;background:white;border:1px solid #e2e8f0;border-radius:16px}
+    h1{font-size:30px;line-height:1.25}h2{font-size:20px;margin-top:28px}a{color:#3730a3}
+    @media(max-width:800px){main{margin:16px;padding:22px}h1{font-size:26px}}
+  </style>
+</head>
+<body><main>
+  <a href="/">← Hệ thống RTG</a>
+  <h1>Thông tin quyền riêng tư</h1>
+  <p>RTG System là ứng dụng quản trị nhân sự và vận hành nội bộ Tổ RTG. Trang này giải thích việc sử dụng dữ liệu trong các chức năng đăng nhập Google và lưu trữ Drive/Sheets. Cập nhật ngày 26/09/2026.</p>
+  <h2>Dữ liệu và mục đích sử dụng</h2>
+  <p>Khi đăng nhập Google, ứng dụng sử dụng mã định danh tài khoản, email và thông tin hồ sơ cơ bản để xác thực qua Supabase. Quyền truy cập nghiệp vụ được kiểm tra theo hồ sơ nhân viên và phân quyền trong hệ thống.</p>
+  <p>Supabase PostgreSQL lưu dữ liệu nghiệp vụ, liên kết tài khoản, hàng đợi đồng bộ, nhật ký thao tác và metadata tệp. Google Sheets lưu báo cáo và lịch sử xuất dữ liệu; Google Drive lưu tài liệu, tệp nguồn, tệp đã xử lý và bản sao lưu do người dùng được phân quyền yêu cầu.</p>
+  <h2>Quyền truy cập Google Drive</h2>
+  <p>Chỉ quản trị viên kết nối kho Google dùng chung của ứng dụng. Phạm vi <code>drive.file</code> cho phép RTG tạo và làm việc với các tệp của ứng dụng hoặc tệp được người dùng cấp quyền riêng. Phạm vi này không cấp quyền đọc toàn bộ Drive cá nhân.</p>
+  <p>Quyền truy cập offline cho phép máy chủ tiếp tục đồng bộ khi quản trị viên không mở trang cấp quyền. Refresh token được mã hóa và lưu ở cơ sở dữ liệu riêng; trình duyệt không nhận refresh token hoặc Client Secret của ứng dụng.</p>
+  <h2>Lưu trữ và người có quyền xem</h2>
+  <p>Dữ liệu đi qua các dịch vụ Supabase và Google để thực hiện chức năng tương ứng. Quyền xem trong RTG phụ thuộc vai trò và quyền nghiệp vụ. Tệp trong Google còn chịu quyền chia sẻ của chủ kho Google. Ứng dụng không tự bật chia sẻ công khai cho kho Drive hoặc bảng báo cáo.</p>
+  <p>Khi người có quyền chủ động sử dụng chức năng AI để phân tích tài liệu hoặc tạo câu hỏi, nội dung được chọn có thể được gửi tới dịch vụ Google Gemini đã cấu hình trên máy chủ. Đăng nhập hoặc kết nối kho Google không tự gửi toàn bộ dữ liệu Drive tới AI.</p>
+  <p>Tệp tạm chỉ được xóa sau khi đã xử lý, lưu dữ liệu và xác nhận Drive trả về file ID. Dữ liệu và bản lưu trữ được giữ cho đến khi có thao tác quản trị phù hợp; thu hồi quyền Google không tự xóa dữ liệu đã lưu ở PostgreSQL, Drive hoặc Sheets.</p>
+  <h2>Thu hồi quyền và yêu cầu hỗ trợ</h2>
+  <p>Bạn có thể thu hồi quyền RTG trong <a href="https://myaccount.google.com/connections">Kết nối tài khoản Google</a>. Việc này sẽ dừng các lần truy cập Google tiếp theo bằng quyền đã thu hồi; tác vụ đồng bộ có thể báo lỗi và cần quản trị viên kết nối lại.</p>
+  <p>Để yêu cầu kiểm tra, sửa hoặc xóa dữ liệu thuộc phạm vi quản lý của hệ thống, liên hệ quản trị viên tại <a href="mailto:tuananh.hict1992@gmail.com">tuananh.hict1992@gmail.com</a>. Không gửi mật khẩu, mã OTP hoặc khóa truy cập trong yêu cầu hỗ trợ.</p>
+</main></body>
+</html>

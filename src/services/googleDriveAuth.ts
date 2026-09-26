@@ -21,6 +21,27 @@ export async function signInWithGoogleDrive() {
   listeners.forEach((fn) => fn(googleUser));
   return { user: googleUser, accessToken: "backend-managed" };
 }
+export async function connectGoogleDriveStorage() {
+  const connection = await api<{ oauthAppUrl: string | null }>("/google/connection");
+  if (connection.oauthAppUrl) {
+    const appUrl = new URL(connection.oauthAppUrl);
+    if (appUrl.protocol !== "https:" || appUrl.origin !== connection.oauthAppUrl)
+      throw new Error("Địa chỉ website kết nối Google không hợp lệ.");
+    // Google may reject a hosting alias as an OAuth redirect URI.
+    // Establish the browser session and cookie on the registered app origin.
+    if (window.location.origin !== appUrl.origin) {
+      window.location.assign(appUrl.origin);
+      return;
+    }
+  }
+  const { url } = await api<{ url: string }>("/google/oauth/start", {
+    method: "POST",
+  });
+  const target = new URL(url);
+  if (target.origin !== "https://accounts.google.com")
+    throw new Error("Địa chỉ xác thực Google không hợp lệ.");
+  window.location.assign(url);
+}
 export async function signOutGoogleDrive() {
   connected = false;
   googleUser = null;

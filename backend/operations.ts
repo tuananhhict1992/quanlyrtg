@@ -117,7 +117,7 @@ operationsRouter.post(
         );
       const id = randomUUID();
       await db.query(
-        "insert into private.sync_queue(job_id,kind,module,record_id,checksum,payload,requested_by) values($1,'drive','backup',$1,$2,$3,$4)",
+        "insert into private.sync_queue(job_id,kind,module,record_id,checksum,payload,requested_by) values($1::uuid,'drive','backup',$1::text,$2,$3,$4)",
         [
           id,
           checksum(rows),

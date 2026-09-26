@@ -53,6 +53,9 @@ app.use(
   }),
 );
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+app.get("/privacy", (_req, res) =>
+  res.sendFile(path.resolve("public/privacy.html")),
+);
 app.use(
   "/api",
   rateLimit({

@@ -2,11 +2,15 @@
 
 Ngày cập nhật: 26/09/2026. Project đã chọn: **quanlyrtghict — utcpdfiyaqnimdasttak**.
 
-**Web chính thức:** [Mở hệ thống RTG](https://quanlyrtg-290449474780.asia-southeast1.run.app/). AI Studio đã Publish thành công, trạng thái Ready. Dùng email/mật khẩu Supabase đã được cấp quyền; Google Workspace cần cấu hình OAuth riêng.
+**Web chính thức:** [Mở hệ thống RTG](https://quanlyrtg-290449474780.asia-southeast1.run.app/). Đăng nhập Google đã được kiểm chứng với admin `tuananh.hict1992@gmail.com`; đăng nhập email/mật khẩu Supabase vẫn được giữ.
 
-Bản cập nhật kết nối Google đã lên Cloud Run revision `quanlyrtg-00002-znd` ngày 26/09/2026. Mã nguồn và migration đã sẵn sàng; OAuth client và quyền truy cập kho Google vẫn chờ hoàn tất, nên chưa coi Drive/Sheets đã kết nối. Hướng dẫn ở bước 7–8 áp dụng cho bản mới này.
+Google OAuth đã được cấu hình trong Supabase và AI Studio Secrets. Kho đã liên kết với `tuananh.hict1992@gmail.com`: [RTG_SYSTEM](https://drive.google.com/drive/folders/1qzDLF2Obxkk7OvxI-feAoecF8q38wCEH) có đủ 10 thư mục; [RTG_ARCHIVE](https://docs.google.com/spreadsheets/d/1uXT_ON2PjFPFO04whDJ9Poy3mCebtbXK4cI9RdMliF0/edit) có đủ 11 tab yêu cầu. Đã xử lý thành công hai phiên bản báo cáo hồ sơ `RTG-ADMIN` và đối chiếu trực tiếp tab EMPLOYEES. PostgreSQL tiếp tục là database chính.
 
-Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét, thông báo giao bài. Cập nhật 26/09/2026: migration đã được áp dụng lên project `quanlyrtghict` (`utcpdfiyaqnimdasttak`), 12 bảng đều bật RLS và Realtime đã cấu hình. Admin đầu tiên đã được tạo trong Supabase Auth và liên kết hồ sơ `RTG-ADMIN` (ADMIN, ACTIVE). Bản Google AI Studio Preview đã đăng nhập thành công, tải màn hình quản trị từ database thật và ghi audit `login`. Bản chính thức đã tải màn hình đăng nhập, health trả 200 và API tài khoản trả 401 khi chưa xác thực. Máy local hiện chưa có `.env`; Google Drive/Sheets chưa kết nối.
+Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét, thông báo giao bài. Migration đã được áp dụng lên project `quanlyrtghict` (`utcpdfiyaqnimdasttak`), 12 bảng đều bật RLS và Realtime đã cấu hình. Admin được liên kết hồ sơ `RTG-ADMIN` (ADMIN, ACTIVE); Google đăng nhập vào chính tài khoản Auth đã có, không tạo hồ sơ admin trùng. Máy local hiện chưa có `.env`.
+
+Google Cloud hiện từ chối callback tên miền `quanlyrtg-hict.ai.studio`. Khi kết nối lại kho, sử dụng địa chỉ `run.app` ở đầu tài liệu; nút kết nối trên tên miền khác sẽ mở địa chỉ chính thức. Callback đã đăng ký: Supabase `/auth/v1/callback` và web chính `/api/google/oauth/callback`. Không thêm wildcard hoặc dùng tên miền preview làm callback.
+
+Google OAuth đã chuyển sang In production ngày 26/09/2026 theo xác nhận của chủ tài khoản. Trang quyền riêng tư được công bố tại `/privacy`. Tài khoản Google chỉ được vào dữ liệu RTG khi hồ sơ Supabase đã liên kết và được cấp quyền; Publish OAuth không tự cấp vai trò nhân viên. Cần kết nối lại kho sau khi rời Testing để thay refresh token được tạo trong chế độ thử nghiệm.
 
 Đối với bản AI Studio hiện tại, URL, publishable key, `DATABASE_URL` và `TRUST_PROXY_HOPS=1` đã được cấu hình trong Secrets. Kết nối database sử dụng Session pooler, kiểm tra TLS đầy đủ và chứng chỉ CA tại `supabase/certs/prod-ca-2021.txt`. Không nhập lại mật khẩu hoặc bootstrap admin khi không cần. Migration đã có ledger nên không cần dán lại SQL tạo bảng; bước 3 dùng để áp dụng migration mới khi có thay đổi. Bản nhập vào AI Studio không tự đồng bộ với GitHub.
 

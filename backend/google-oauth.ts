@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import { CodeChallengeMethod } from "google-auth-library";
 import {
   createGoogleOAuthClient,
-  googleAppOrigin,
+  googleOAuthOrigin,
   sealGoogleValue,
   openGoogleValue,
   saveGoogleConnection,
@@ -20,6 +20,7 @@ const cookieOptions = {
   path: "/api/google/oauth/callback",
 };
 type OAuthState = {
+  origin: string;
   state: string;
   verifier: string;
   actorId: string;
@@ -50,13 +51,12 @@ export function validateGoogleState(
       400,
       "Phiên kết nối Google không hợp lệ hoặc đã hết hạn.",
     );
+  googleOAuthOrigin(saved.origin);
   return saved;
 }
 export async function startGoogleOAuth(req: any, res: Response) {
   assertPermission(req.user, "MANAGE_PERMISSIONS");
-  const origin = googleAppOrigin();
-  if (req.headers.origin !== origin)
-    throw new HttpError(403, "Hãy kết nối Google từ website chính thức.");
+  const origin = googleOAuthOrigin(req.headers.origin);
   const state = randomBytes(32).toString("base64url"),
     verifier = randomBytes(48).toString("base64url");
   const email = req.authUser.email;
@@ -66,6 +66,7 @@ export async function startGoogleOAuth(req: any, res: Response) {
     cookieName,
     sealGoogleValue(
       JSON.stringify({
+        origin,
         state,
         verifier,
         actorId: req.user.id,
@@ -79,7 +80,7 @@ export async function startGoogleOAuth(req: any, res: Response) {
   );
   res.setHeader("Cache-Control", "no-store");
   res.json({
-    url: createGoogleOAuthClient().generateAuthUrl({
+    url: createGoogleOAuthClient(origin).generateAuthUrl({
       access_type: "offline",
       prompt: "consent",
       login_hint: email,
@@ -113,7 +114,7 @@ export async function finishGoogleOAuth(req: Request, res: Response) {
       )
     ).rows[0]?.data;
     assertPermission(user, "MANAGE_PERMISSIONS");
-    const auth = createGoogleOAuthClient();
+    const auth = createGoogleOAuthClient(saved.origin);
     const { tokens } = await auth.getToken({
       code: req.query.code,
       codeVerifier: saved.verifier,
@@ -144,7 +145,7 @@ export async function finishGoogleOAuth(req: Request, res: Response) {
     );
     await ensureStructure();
     await audit(pool, saved.actorId, "google.connection.connect");
-    res.redirect(303, googleAppOrigin() + "/?google_connection=success");
+    res.redirect(303, saved.origin + "/?google_connection=success");
   } catch {
     // Do not expose authorization codes, tokens, client secrets or provider response bodies.
     res
