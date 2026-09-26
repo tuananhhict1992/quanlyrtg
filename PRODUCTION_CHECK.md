@@ -39,7 +39,9 @@
 
 ## Cần hoàn tất trên môi trường thực
 
-Chưa có DATABASE_URL, Google credentials, folder ID hay spreadsheet ID trong môi trường local. AI Studio đã có DATABASE_URL trong Secrets và đăng nhập admin end-to-end thành công; chưa Publish website chính thức. Upload/sync Google thật, Google OAuth/quota/SMTP vẫn cần cấu hình và kiểm tra. RUN_SYNC_WORKER hiện tắt trong AI Studio khi chưa có cấu hình Google. Các thông báo trùng đã lưu trước đây chưa được xử lý trên DB thật. Preview có thể báo lỗi websocket Vite trong lúc máy chủ khởi động lại; không coi Preview là bản production đã kiểm thử toàn bộ.
+AI Studio đã Publish thành công ngày 26/09/2026, trạng thái Ready. URL chính thức: https://quanlyrtg-290449474780.asia-southeast1.run.app/. Đã kiểm tra HTTPS, trang đăng nhập trả 200, `/api/health` trả 200 với status ok, `/api/me` không xác thực trả 401. Production có CSP và HSTS, trang đăng nhập chưa ghi nhận lỗi JavaScript. Site URL Supabase Auth đã cập nhật theo URL chính thức. Đăng nhập admin đã kiểm chứng trên Preview; cần người dùng nhập mật khẩu trực tiếp để xác nhận phiên mới trên tên miền production.
+
+Chưa có DATABASE_URL, Google credentials, folder ID hay spreadsheet ID trong môi trường local. AI Studio đã có DATABASE_URL trong Secrets. Upload/sync Google thật, Google OAuth/quota/SMTP vẫn cần cấu hình và kiểm tra. RUN_SYNC_WORKER hiện tắt trong AI Studio khi chưa có cấu hình Google. Các thông báo trùng đã lưu trước đây chưa được xử lý trên DB thật. Preview có thể báo lỗi websocket Vite trong lúc máy chủ khởi động lại; không coi Preview là bản production đã kiểm thử toàn bộ.
 
 Trước khi đưa vào vận hành: chạy migration với backup sẵn có, liên kết tài khoản, thử quyền từng vai trò và bộ phận với dữ liệu thật, thử upload → ngắt mạng → Retry, import Preview/Confirm, thi hết giờ/nộp lại, duyệt nghỉ và chốt bình xét, đối chiếu kết quả/biên bản hiện có. Không thể xác nhận các cấu hình bên ngoài chỉ từ source ZIP.
 

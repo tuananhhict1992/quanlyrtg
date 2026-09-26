@@ -2,7 +2,9 @@
 
 Ngày cập nhật: 26/09/2026. Project đã chọn: **quanlyrtghict — utcpdfiyaqnimdasttak**.
 
-Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét, thông báo giao bài. Cập nhật 26/09/2026: migration đã được áp dụng lên project `quanlyrtghict` (`utcpdfiyaqnimdasttak`), 11 bảng đều bật RLS và Realtime đã cấu hình. Admin đầu tiên đã được tạo trong Supabase Auth và liên kết hồ sơ `RTG-ADMIN` (ADMIN, ACTIVE). Bản Google AI Studio Preview đã đăng nhập thành công, tải màn hình quản trị từ database thật và ghi audit `login`. Máy local hiện chưa có `.env`; Google Drive/Sheets chưa kết nối và website chưa Publish chính thức.
+**Web chính thức:** [Mở hệ thống RTG](https://quanlyrtg-290449474780.asia-southeast1.run.app/). AI Studio đã Publish thành công, trạng thái Ready. Dùng email/mật khẩu Supabase đã được cấp quyền; Google Workspace cần cấu hình OAuth riêng.
+
+Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét, thông báo giao bài. Cập nhật 26/09/2026: migration đã được áp dụng lên project `quanlyrtghict` (`utcpdfiyaqnimdasttak`), 11 bảng đều bật RLS và Realtime đã cấu hình. Admin đầu tiên đã được tạo trong Supabase Auth và liên kết hồ sơ `RTG-ADMIN` (ADMIN, ACTIVE). Bản Google AI Studio Preview đã đăng nhập thành công, tải màn hình quản trị từ database thật và ghi audit `login`. Bản chính thức đã tải màn hình đăng nhập, health trả 200 và API tài khoản trả 401 khi chưa xác thực. Máy local hiện chưa có `.env`; Google Drive/Sheets chưa kết nối.
 
 Đối với bản AI Studio hiện tại, URL, publishable key, `DATABASE_URL` và `TRUST_PROXY_HOPS=1` đã được cấu hình trong Secrets. Kết nối database sử dụng Session pooler, kiểm tra TLS đầy đủ và chứng chỉ CA tại `supabase/certs/prod-ca-2021.txt`. Không nhập lại mật khẩu hoặc bootstrap admin khi không cần. Migration đã có ledger nên không cần dán lại SQL tạo bảng; bước 3 dùng để áp dụng migration mới khi có thay đổi. Bản nhập vào AI Studio không tự đồng bộ với GitHub.
 
@@ -181,6 +183,10 @@ Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét
    Kiểm thử tự động local dùng API fixture và PostgreSQL PGlite, không thay cho các bước xác nhận Supabase/Google thật. `npm.cmd run db:check` chỉ kiểm tra migration local; `npm.cmd run db:migrate` mới áp dụng lên DB đã cấu hình.
 
 10. **Đưa lên máy chủ để nhân viên sử dụng**
+
+    Bản hiện tại đã được AI Studio Publish lên Cloud Run tại địa chỉ đầu tài liệu. Site URL trong Supabase Auth đã đổi sang `https://quanlyrtg-290449474780.asia-southeast1.run.app`. Đăng nhập bằng tài khoản admin trên địa chỉ này để kiểm tra phiên mới; phiên đăng nhập Preview không tự chuyển sang tên miền khác.
+
+    Khi sửa mã hoặc Secrets trong AI Studio, kiểm tra Preview rồi vào **Publish → Republish** để cập nhật website chính thức. Push GitHub không tự cập nhật bản đã Publish. Sau mỗi lần Republish, kiểm tra trang đăng nhập, `/api/health`, đăng nhập và nghiệp vụ vừa thay đổi. Không bấm Unpublish nếu vẫn cần người dùng truy cập web.
 
     `localhost` chỉ truy cập trên chính máy đang chạy. Cần một máy chủ chạy Node liên tục, tên miền và HTTPS. Không chỉ upload thư mục `dist` lên hosting tĩnh vì các API, xác thực nghiệp vụ, Word và worker cần Node.
 
