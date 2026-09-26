@@ -1,8 +1,10 @@
 # Hướng dẫn đưa hệ thống RTG vào hoạt động
 
-Ngày cập nhật: 25/09/2026. Project đã chọn: **quanlyrtghict — utcpdfiyaqnimdasttak**.
+Ngày cập nhật: 26/09/2026. Project đã chọn: **quanlyrtghict — utcpdfiyaqnimdasttak**.
 
-Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét, thông báo giao bài. Máy hiện chưa có `.env`; chưa áp dụng migration lên project thật, chưa tạo tài khoản admin và chưa kết nối Google thật. Trang localhost mở được chưa có nghĩa là đã kết nối database. Làm lần lượt các bước dưới đây.
+Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét, thông báo giao bài. Cập nhật 26/09/2026: migration đã được áp dụng lên project `quanlyrtghict` (`utcpdfiyaqnimdasttak`), 11 bảng đều bật RLS và Realtime đã cấu hình. Admin đầu tiên đã được tạo trong Supabase Auth và liên kết hồ sơ `RTG-ADMIN` (ADMIN, ACTIVE). Bản Google AI Studio Preview đã đăng nhập thành công, tải màn hình quản trị từ database thật và ghi audit `login`. Máy local hiện chưa có `.env`; Google Drive/Sheets chưa kết nối và website chưa Publish chính thức.
+
+Đối với bản AI Studio hiện tại, URL, publishable key, `DATABASE_URL` và `TRUST_PROXY_HOPS=1` đã được cấu hình trong Secrets. Kết nối database sử dụng Session pooler, kiểm tra TLS đầy đủ và chứng chỉ CA tại `supabase/certs/prod-ca-2021.txt`. Không nhập lại mật khẩu hoặc bootstrap admin khi không cần. Migration đã có ledger nên không cần dán lại SQL tạo bảng; bước 3 dùng để áp dụng migration mới khi có thay đổi. Bản nhập vào AI Studio không tự đồng bộ với GitHub.
 
 1. **Chuẩn bị nơi chạy ứng dụng**
 
@@ -40,10 +42,12 @@ Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét
    Bấm **Connect** trên dashboard, chọn **Direct connection** nếu máy hỗ trợ IPv6, hoặc **Session pooler** khi máy chỉ dùng IPv4. Sao chép chuỗi kết nối vào `DATABASE_URL`, thay mật khẩu database và thêm `sslmode=verify-full` đúng cú pháp URL. Dùng thông tin host/user do dashboard cung cấp; không đoán hostname. Mật khẩu trong URL phải được percent-encode nếu có ký tự đặc biệt. Đây là mật khẩu database, khác với mật khẩu đăng nhập ứng dụng.
 
    ```dotenv
-   DATABASE_URL=postgresql://USER:PASSWORD_DA_ENCODE@HOST:5432/postgres?sslmode=verify-full
+   DATABASE_URL=postgresql://USER:PASSWORD_DA_ENCODE@HOST:5432/postgres?sslmode=verify-full&sslrootcert=supabase%2Fcerts%2Fprod-ca-2021.txt
    ```
 
-   Worker sử dụng khóa theo session nên **không dùng Transaction pooler**. Nếu gặp lỗi chứng chỉ, cấu hình CA từ Supabase cho máy chủ; không tắt kiểm tra TLS. [Hướng dẫn kết nối chính thức của Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres).
+   Giữ file CA công khai `supabase/certs/prod-ca-2021.txt` trong bản triển khai và chạy Node từ thư mục gốc project. File này lấy từ mục SSL của Supabase Database Settings; kiểm tra thời hạn và thay bằng chứng chỉ chính thức khi Supabase đổi CA. Mật khẩu thật không có dấu ngoặc vuông giữ chỗ từ mẫu URI, trừ khi dấu đó thực sự thuộc mật khẩu.
+
+   Worker sử dụng khóa theo session nên **không dùng Transaction pooler**. Nếu gặp lỗi chứng chỉ, cấu hình CA từ Supabase cho máy chủ; không tắt kiểm tra TLS. [Hướng dẫn SSL chính thức của Supabase](https://supabase.com/docs/guides/platform/ssl-enforcement).
 
 3. **Khởi tạo cấu trúc database**
 
@@ -69,7 +73,7 @@ Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét
 
 4. **Tạo admin đầu tiên**
 
-   Chọn một email thực để quản trị. Câu trả lời trước đó “có” chưa cung cấp email nên hiện chưa có admin được tạo.
+   Bước này đã hoàn tất trên project `quanlyrtghict`: admin đầu tiên đã liên kết với `RTG-ADMIN`. Không chạy bootstrap lần nữa trên project này. Các hướng dẫn dưới đây chỉ dùng khi cài một database mới.
 
    Trong Supabase, mở **Authentication → Users → Add user → Create new user**, nhập email và mật khẩu mạnh do bạn tự đặt. Nếu quản trị viên trực tiếp tạo tài khoản nội bộ, xác nhận email theo lựa chọn của dashboard; nếu dùng email mời thì hoàn tất lời mời trước khi đăng nhập. Sao chép **User UID** của tài khoản vừa tạo.
 
@@ -180,7 +184,9 @@ Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét
 
     `localhost` chỉ truy cập trên chính máy đang chạy. Cần một máy chủ chạy Node liên tục, tên miền và HTTPS. Không chỉ upload thư mục `dist` lên hosting tĩnh vì các API, xác thực nghiệp vụ, Word và worker cần Node.
 
-    Trên máy chủ: chép mã nguồn đã kiểm thử, cài dependencies, lưu secret trong môi trường server, chạy migration còn thiếu, build với biến `VITE_*` đúng, đặt `NODE_ENV=production`, chạy `npm start` và worker theo bước 8. Dùng trình quản lý dịch vụ của nền tảng để tự khởi động lại sau lỗi/reboot. Thiết lập reverse proxy HTTPS cho cùng origin web/API; cấu hình giới hạn truy cập ở proxy phù hợp, đặc biệt khi chạy nhiều web instance.
+    Trên máy chủ: chép mã nguồn đã kiểm thử cùng file CA, cài dependencies, lưu secret trong môi trường server, chạy migration còn thiếu, build với biến `VITE_*` đúng, đặt `NODE_ENV=production`, chạy `npm start` và worker theo bước 8. Dùng trình quản lý dịch vụ của nền tảng để tự khởi động lại sau lỗi/reboot. Thiết lập reverse proxy HTTPS cho cùng origin web/API; cấu hình giới hạn truy cập ở proxy phù hợp, đặc biệt khi chạy nhiều web instance.
+
+    `TRUST_PROXY_HOPS=0` khi chạy trực tiếp, không có proxy. Bản AI Studio hiện dùng `TRUST_PROXY_HOPS=1` để lấy IP qua ingress cho rate limit. Với nền tảng khác, xác nhận số proxy tin cậy thực tế và ngăn truy cập trực tiếp vào Node trước khi đặt giá trị; không đặt trust proxy thành `true` cho mọi nguồn.
 
     Cập nhật Site URL/Redirect URLs trong Supabase Auth sang tên miền thật. Nếu dùng đăng nhập Google, cấu hình provider và callback riêng. Cấu hình SMTP nếu dùng email mời/khôi phục mật khẩu; kiểm tra email thực nhận được trước khi cấp tài khoản hàng loạt.
 
@@ -194,6 +200,8 @@ Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét
     | Invalid login credentials | Email/mật khẩu Auth, đúng project, tình trạng xác nhận email |
     | Tài khoản chưa được cấp quyền / 403 | `account:link`, đúng id hồ sơ, trạng thái ACTIVE và quyền nghiệp vụ |
     | Lỗi password authentication / timeout DB | DATABASE_URL, mật khẩu DB, encode ký tự, project đang hoạt động, Direct/Session pooler và mạng |
+    | SELF_SIGNED_CERT_IN_CHAIN | File CA có trong bản triển khai, đường dẫn sslrootcert đúng, dùng sslmode=verify-full; không tắt xác minh chứng chỉ |
+    | Unsupported provider: provider is not enabled | Dùng email/mật khẩu; nút Google Workspace cần cấu hình Google OAuth riêng |
     | Google 403/404 | API đã bật, service account có quyền Shared Drive/Spreadsheet, đúng folder ID và spreadsheet ID |
     | Queue luôn pending | Worker có chạy và có kết nối DB không; kiểm tra log |
     | Queue failed | Xem lỗi từng job, sửa nguyên nhân, Retry; không xóa dữ liệu nghiệp vụ/file tạm |

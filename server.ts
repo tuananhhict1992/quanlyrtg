@@ -20,6 +20,10 @@ dotenv.config();
 
 export const app = express();
 app.disable("x-powered-by");
+const trustedProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
+if (!Number.isInteger(trustedProxyHops) || trustedProxyHops < 0 || trustedProxyHops > 10)
+  throw new Error("TRUST_PROXY_HOPS must be an integer between 0 and 10.");
+app.set("trust proxy", trustedProxyHops);
 app.use(
   helmet({
     contentSecurityPolicy:
@@ -452,6 +456,11 @@ app.use((err: any, _req: any, res: any, _next: any) => {
           : err.code === "23505"
             ? 409
             : 500;
+  if (status === 500) {
+    const rawCode = typeof err?.code === "string" ? err.code : "";
+    const code = /^[A-Z0-9_]{1,64}$/.test(rawCode) ? rawCode : "UNKNOWN";
+    console.error("RTG_BACKEND_ERROR", { code });
+  }
   res.status(status).json({
     error:
       status === 500

@@ -223,7 +223,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4 mx-3 my-3 rounded-2xl bg-gradient-to-b from-slate-50 to-slate-100/80 border border-slate-200/80">
           <div className="flex items-center gap-3">
             <img
-              src={currentUser.avatar}
+              src={currentUser.avatar || undefined}
               alt={currentUser.fullName}
               className="w-11 h-11 rounded-xl object-cover ring-2 ring-white shadow-xs"
             />
