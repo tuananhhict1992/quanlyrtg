@@ -36,10 +36,10 @@ operationsRouter.post(
 );
 operationsRouter.post(
   "/excel/preview",
-  multer({
+  (multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 20 * 1024 * 1024, files: 1, fields: 2 },
-  }).single("file"),
+  }).single("file") as any),
   asyncRoute(async (req, res) => {
     const module = validModule(req.body.module);
     assertPermission(req.user, MODULE_PERMISSIONS[module]);

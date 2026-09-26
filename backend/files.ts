@@ -117,7 +117,7 @@ const upload = multer({
 });
 filesRouter.post(
   "/",
-  upload.single("file"),
+  upload.single("file") as any,
   asyncRoute(async (req, res) => {
     if (!req.file) throw new HttpError(400, "Chưa chọn tệp.");
     const module = String(req.body.module || "internalDocuments"),
