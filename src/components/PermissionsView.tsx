@@ -955,7 +955,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
                   }`}
                 >
                   <img
-                    src={emp.avatar}
+                    src={emp.avatar || undefined}
                     alt={emp.fullName}
                     className="w-10 h-10 rounded-xl object-cover ring-1 ring-slate-200 shrink-0"
                   />
@@ -1032,7 +1032,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200/80">
                 <div className="flex items-center gap-3">
                   <img
-                    src={selectedEmployee.avatar}
+                    src={selectedEmployee.avatar || undefined}
                     alt={selectedEmployee.fullName}
                     className="w-12 h-12 rounded-2xl object-cover ring-2 ring-indigo-500/20"
                   />
