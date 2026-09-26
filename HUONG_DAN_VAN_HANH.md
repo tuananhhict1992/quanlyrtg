@@ -4,6 +4,8 @@ Ngày cập nhật: 26/09/2026. Project đã chọn: **quanlyrtghict — utcpdfi
 
 **Web chính thức:** [Mở hệ thống RTG](https://quanlyrtg-290449474780.asia-southeast1.run.app/). AI Studio đã Publish thành công, trạng thái Ready. Dùng email/mật khẩu Supabase đã được cấp quyền; Google Workspace cần cấu hình OAuth riêng.
 
+Bản cập nhật kết nối Google đã lên Cloud Run revision `quanlyrtg-00002-znd` ngày 26/09/2026. Mã nguồn và migration đã sẵn sàng; OAuth client và quyền truy cập kho Google vẫn chờ hoàn tất, nên chưa coi Drive/Sheets đã kết nối. Hướng dẫn ở bước 7–8 áp dụng cho bản mới này.
+
 Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét, thông báo giao bài. Cập nhật 26/09/2026: migration đã được áp dụng lên project `quanlyrtghict` (`utcpdfiyaqnimdasttak`), 12 bảng đều bật RLS và Realtime đã cấu hình. Admin đầu tiên đã được tạo trong Supabase Auth và liên kết hồ sơ `RTG-ADMIN` (ADMIN, ACTIVE). Bản Google AI Studio Preview đã đăng nhập thành công, tải màn hình quản trị từ database thật và ghi audit `login`. Bản chính thức đã tải màn hình đăng nhập, health trả 200 và API tài khoản trả 401 khi chưa xác thực. Máy local hiện chưa có `.env`; Google Drive/Sheets chưa kết nối.
 
 Đối với bản AI Studio hiện tại, URL, publishable key, `DATABASE_URL` và `TRUST_PROXY_HOPS=1` đã được cấu hình trong Secrets. Kết nối database sử dụng Session pooler, kiểm tra TLS đầy đủ và chứng chỉ CA tại `supabase/certs/prod-ca-2021.txt`. Không nhập lại mật khẩu hoặc bootstrap admin khi không cần. Migration đã có ledger nên không cần dán lại SQL tạo bảng; bước 3 dùng để áp dụng migration mới khi có thay đổi. Bản nhập vào AI Studio không tự đồng bộ với GitHub.
