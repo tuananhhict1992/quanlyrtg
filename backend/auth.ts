@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { verifyAccessToken } from './auth-verification';
 import { pool, HttpError } from "./db";
 export function assertSessionPolicy(account: any, claims: any, path: string) {
   if (!account?.data || account.data.status !== 'ACTIVE') throw new HttpError(403, 'Tài khoản chưa được cấp quyền hoặc đã bị khóa.');
@@ -21,11 +21,7 @@ export const requireAuth = async (req: any, _res: any, next: any) => {
         process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
     if (!url || !key || !process.env.DATABASE_URL)
       throw new HttpError(503, "Chưa cấu hình Supabase trên server.");
-    const { data, error } = await createClient(url, key, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    }).auth.getUser(token);
-    if (error || !data.user)
-      throw new HttpError(401, "Phiên đăng nhập hết hạn.");
+    const authUser = await verifyAccessToken(url, key, token);
     // Claims are inspected only AFTER Supabase verifies this token with getUser.
     const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
     const sessionId = typeof claims.session_id === 'string' && /^[0-9a-f-]{36}$/i.test(claims.session_id) ? claims.session_id : null;
@@ -33,13 +29,13 @@ export const requireAuth = async (req: any, _res: any, next: any) => {
       `select r.data,a.must_change_password,a.credentials_changed_at,s.created_at as session_created_at
        from private.accounts a join private.records r on r.module='employees' and r.id=a.employee_id
        left join auth.sessions s on s.id=$2 and s.user_id=a.auth_user_id where a.auth_user_id=$1`,
-      [data.user.id, sessionId],
+      [authUser.id, sessionId],
     );
     const account = result.rows[0];
     const user = account?.data;
     assertSessionPolicy(account, claims, req.path);
     req.user = { ...user, requiresCredentialChange: account.must_change_password };
-    req.authUser = data.user;
+    req.authUser = authUser;
     next();
   } catch (e) {
     next(e);

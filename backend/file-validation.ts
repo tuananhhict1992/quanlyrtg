@@ -8,7 +8,7 @@ export async function validateFile(
 ) {
   if (!buffer.length || buffer.length > MAX_SIZE)
     throw new HttpError(413, "Tệp phải từ 1 byte đến 20 MB.");
-  const detected = await fileTypeFromBuffer(buffer);
+  const detected = await fileTypeFromBuffer(buffer).catch(() => undefined);
   const allowed: Record<string, string[]> = {
     "application/pdf": ["pdf"],
     "image/jpeg": ["jpg", "jpeg"],
@@ -24,7 +24,7 @@ export async function validateFile(
   const ext = name.split(".").pop()?.toLowerCase() || "";
   if (
     !detected ||
-    detected.mime !== claimed ||
+    !['', 'application/octet-stream', detected.mime].includes(claimed.toLowerCase().split(';')[0].trim()) ||
     !allowed[detected.mime]?.includes(ext)
   )
     throw new HttpError(

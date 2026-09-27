@@ -24,7 +24,7 @@ export async function stageFile(
   module: string,
   recordId: string,
 ) {
-  await validateFile(buffer, mime, name);
+  mime = await validateFile(buffer, mime, name);
   if (!FOLDER_MODULE[module])
     throw new HttpError(400, "Phân hệ tệp không hợp lệ.");
   const hash = createHash("sha256").update(buffer).digest("hex");

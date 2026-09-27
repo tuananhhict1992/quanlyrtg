@@ -32,7 +32,7 @@ async function realtimeBus(page:any) {
       const [joinRef,ref,topic,event,payload]=JSON.parse(raw);
       if(event==='phx_join') {
         const id=++nextId, filter=payload.config.postgres_changes[0];
-        channels.set(topic,{socket,joinRef,id,module:filter.filter.split('eq.')[1]});
+        channels.set(topic,{socket,joinRef,id,module:filter.filter?.split('eq.')[1] || '*'});
         socket.send(JSON.stringify([joinRef,ref,topic,'phx_reply',{status:'ok',response:{postgres_changes:[{...filter,id}]}}]));
       } else if(event==='phx_leave') {
         channels.delete(topic);
@@ -41,8 +41,8 @@ async function realtimeBus(page:any) {
     });
   });
   return {
-    count:(module:string)=>[...channels.values()].filter(c=>c.module===module).length,
-    emit:(module:string)=>{for(const [topic,c] of channels) if(c.module===module)
+    count:(module:string)=>[...channels.values()].filter(c=>c.module===module || c.module==='*').length,
+    emit:(module:string)=>{for(const [topic,c] of channels) if(c.module===module || c.module==='*')
       c.socket.send(JSON.stringify([c.joinRef,null,topic,'postgres_changes',{ids:[c.id],data:{schema:'public',table:'record_changes',type:'INSERT',commit_timestamp:new Date().toISOString(),columns:[{name:'id',type:'int8'},{name:'module',type:'text'}],record:{id:Date.now(),module},old_record:{},errors:null}}]));},
   };
 }

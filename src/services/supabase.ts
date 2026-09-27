@@ -1,5 +1,7 @@
 import { createClient, type User } from "@supabase/supabase-js";
 import { sourceForModule, clearSource } from "./excelProcessing";
+import { createRequestQueue } from './request-queue';
+import { createRealtimeHub } from './realtime-hub';
 export type { User };
 const env = (import.meta as any).env;
 export const configured = !!(
@@ -17,6 +19,8 @@ export const supabase = createClient(
     },
   },
 );
+const collectionRead = createRequestQueue(3);
+const observeChanges = createRealtimeHub(supabase);
 export async function apiFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
@@ -110,9 +114,10 @@ export async function fetchCollectionPage<T>(
   cursor = "",
   limit = 100,
 ) {
-  return api<{ items: T[]; nextCursor: string | null }>(
+  return collectionRead(() => api<{ items: T[]; nextCursor: string | null }>(
     `/records/${module}?limit=${limit}&cursor=${encodeURIComponent(cursor)}`,
-  );
+    { signal: AbortSignal.timeout(20000) },
+  ));
 }
 export async function fetchCollectionOnce<T>(module: string): Promise<T[]> {
   const out: T[] = [];
@@ -134,6 +139,7 @@ export function subscribeToCollection<T>(
     again = false;
   let timer: ReturnType<typeof setTimeout>;
   const refresh = async () => {
+    if (!active) return;
     if (running) {
       again = true;
       return;
@@ -157,32 +163,16 @@ export function subscribeToCollection<T>(
       }
     }
   };
-  const channel = supabase
-    .channel(`${module}:${crypto.randomUUID()}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "record_changes",
-        filter: `module=eq.${module}`,
-      },
-      () => {
-        clearTimeout(timer);
-        timer = setTimeout(refresh, 150);
-      },
-    )
-    .subscribe(status => {
-      // Re-fetch on initial connection and reconnection to recover changes missed offline.
-      if (status === 'SUBSCRIBED' && active) {
-        clearTimeout(timer);
-        timer = setTimeout(refresh, 150);
-      }
-    });
-  void refresh();
+  const schedule = () => {
+    if (!active) return;
+    clearTimeout(timer);
+    timer = setTimeout(refresh, 150 + Math.random() * 350);
+  };
+  const unsubscribe = observeChanges(module, schedule);
+  schedule();
   // Every account subscribes; bounded fallback also covers a temporarily unavailable WebSocket.
-  const fallbackTimer = setInterval(refresh, module === 'zaloMessages' ? 30000 : 60000);
-  const resume = () => { if(active) void refresh(); };
+  const fallbackTimer = setInterval(schedule, (module === 'zaloMessages' ? 30000 : 60000) + Math.random() * 10000);
+  const resume = schedule;
   window.addEventListener('online',resume);
   window.addEventListener('focus',resume);
   return () => {
@@ -191,7 +181,7 @@ export function subscribeToCollection<T>(
     clearInterval(fallbackTimer);
     window.removeEventListener('online',resume);
     window.removeEventListener('focus',resume);
-    void supabase.removeChannel(channel);
+    unsubscribe();
   };
 }
 export function subscribeToDocument<T>(
