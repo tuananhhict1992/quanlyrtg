@@ -12,6 +12,7 @@ import { examsRouter } from "./backend/exams";
 import { operationsRouter } from "./backend/operations";
 import { startWorker } from "./backend/worker";
 import { runAutomaticWorker } from "./backend/automatic-worker";
+import { authenticatedApiLimiter } from './backend/rate-limits';
 import { assertPermission } from "./backend/security";
 import { HttpError, asyncRoute } from "./backend/db";
 import express, { Request, Response } from "express";
@@ -63,7 +64,9 @@ app.use(
   "/api",
   rateLimit({
     windowMs: 60000,
-    limit: 120,
+    // Coarse ingress guard supports 76 employees behind the same workplace NAT.
+    // Protected business APIs retain 120/minute independently per verified account.
+    limit: 3000,
     standardHeaders: "draft-8",
     legacyHeaders: false,
   }),
@@ -75,6 +78,7 @@ app.post('/api/internal/worker', express.json({limit:'1kb'}), asyncRoute(async (
 }));
 app.use('/api/auth', publicAccountsRouter);
 app.use("/api", requireAuth);
+app.use('/api', authenticatedApiLimiter());
 const PORT = Number(process.env.PORT) || 3000;
 
 // Body parser

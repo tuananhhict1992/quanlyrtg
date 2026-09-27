@@ -4,9 +4,22 @@ import request from "supertest";
 import { readFileSync } from "node:fs";
 import { X509Certificate } from "node:crypto";
 import { parse } from "pg-connection-string";
+import express from 'express';
+import { authenticatedApiLimiter } from '../backend/rate-limits';
 
 process.env.NODE_ENV = "test";
 process.env.TRUST_PROXY_HOPS = "1";
+
+test('verified accounts on the same IP have independent business request limits',async()=>{
+  const fixture=express();
+  // Simulates requireAuth in this isolated fixture; production ignores client account headers.
+  fixture.use((req:any,_res,next)=>{req.authUser={id:req.header('test-account')};next();});
+  fixture.use(authenticatedApiLimiter());
+  fixture.get('/',(_req,res)=>res.json({ok:true}));
+  for(let i=0;i<120;i++) assert.equal((await request(fixture).get('/').set('test-account','one')).status,200);
+  assert.equal((await request(fixture).get('/').set('test-account','one')).status,429);
+  assert.equal((await request(fixture).get('/').set('test-account','two')).status,200);
+});
 
 test("one trusted ingress ignores a spoofed leftmost forwarded address", async () => {
   const { app } = await import("../server");
