@@ -283,7 +283,20 @@ test('Question bank imports all 386 questions atomically, retains failed review 
   for(const [name,start,count] of [['Một',0,21],['Hai',21,365]] as const)XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Câu hỏi','A','B','Đáp án đúng'],...Array.from({length:count},(_,i)=>['Câu kiểm thử '+(start+i),'Lựa chọn A','Lựa chọn B','B'])]),name);
   await page.locator('#ai-question-file-input').setInputFiles({name:'386-cau-kiem-thu.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:XLSX.write(book,{type:'buffer',bookType:'xlsx'})});
   await page.getByRole('button',{name:'Đọc toàn bộ câu hỏi trong tệp',exact:true}).click();
-  await expect(page.getByText('Xem lại & Điều chỉnh câu hỏi (386 câu)',{exact:true})).toBeVisible();
+    await expect(page.getByText('Xem lại & Điều chỉnh câu hỏi (386 câu)',{exact:true})).toBeVisible();
+    for(const width of [390,768,1366,1920]){
+      await page.setViewportSize({width,height:828});
+      const dialog=page.getByRole('dialog',{name:'Nhập ngân hàng câu hỏi'}),scroll=page.getByTestId('question-import-scroll');
+      await scroll.evaluate(e=>{e.scrollTop=e.scrollHeight;});
+      const box=await dialog.boundingBox();
+      expect(box!.y).toBeGreaterThanOrEqual(0);expect(box!.y+box!.height).toBeLessThanOrEqual(828);
+      expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);
+      await expect(dialog.getByRole('button',{name:/Xác nhận thêm/})).toBeInViewport();
+      expect(await scroll.evaluate(e=>e.scrollTop)).toBeGreaterThan(0);
+      expect(await dialog.evaluate(e=>e.parentElement!.scrollHeight-e.parentElement!.clientHeight)).toBeLessThanOrEqual(1);
+      await scroll.evaluate(e=>{e.scrollTop=0;});
+    }
+    await page.setViewportSize({width:1366,height:900});
   await page.getByRole('button',{name:/Xác nhận thêm/}).click();
   await expect(page.getByText('Giả lập chưa lưu được cả lô',{exact:true})).toBeVisible();
   expect(questions).toHaveLength(0);

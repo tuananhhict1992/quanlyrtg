@@ -236,7 +236,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-4xl w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] flex flex-col">
+      <div role="dialog" aria-modal="true" aria-label="Nhập ngân hàng câu hỏi" className="bg-white rounded-3xl max-w-4xl w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -301,7 +301,8 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
 
         {report && report.issues.length>0 && <details className="mt-3 text-xs text-amber-800"><summary>Cần kiểm tra {report.issues.length} vị trí trong tệp</summary><ul className="max-h-32 overflow-auto">{report.issues.map((issue,i)=><li key={i}>{issue}</li>)}</ul></details>}
         {/* Modal Body */}
-        <fieldset disabled={isSaving} className="flex-1 min-h-0 overflow-y-auto py-4 space-y-4">
+        <div data-testid="question-import-scroll" className="flex-1 min-h-0 overflow-y-auto">
+        <fieldset disabled={isSaving} className="min-w-0 py-4 space-y-4">
           {activeTab === 'ANALYZE' && (
             <>
               {!isReviewing ? (
@@ -663,6 +664,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
             </div>
           )}
         </fieldset>
+        </div>
 
         {/* Footer Actions */}
         <div className="pt-4 border-t border-slate-100 flex items-center justify-between flex-shrink-0">
