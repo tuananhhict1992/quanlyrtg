@@ -74,6 +74,10 @@ export async function writeRecord(
       [module, id],
     )
   ).rows[0]?.data;
+  if (module==='incidents' && !old) {
+    const removed=await db.query("select 1 from private.audit_log where module='incidents' and record_id=$1 and action in ('incidents.delete','incidents.discard') limit 1",[id]);
+    if(removed.rows.length)throw new HttpError(409,'Vụ việc đã bị xóa khỏi bảng đối soát. Hãy tải lại dữ liệu.');
+  }
   const next = { ...(merge ? old : {}), ...redact(input), id };
   if (module === 'employees') {
     delete next.requiresCredentialChange;

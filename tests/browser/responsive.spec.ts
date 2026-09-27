@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { createHash } from 'node:crypto';
+import * as XLSX from 'xlsx';
 const admin = {
   id: "test-admin",
   fullName: "Quản trị kiểm thử",
@@ -76,6 +77,71 @@ for (const role of ['ADMIN','MANAGER_L1','USER']) test(`Realtime updates setting
     await expect(page.getByTestId('nav-dashboard')).toHaveCount(0);
   }
   await expect.poll(()=>bus.count('employees')).toBe(1);
+});
+
+test('Yard statistics display in memory without saving files or results',async({page})=>{
+  await page.setViewportSize({width:1366,height:900});
+  await authenticated(page);
+  const workbook=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook,XLSX.utils.aoa_to_sheet([
+    ['BLOCK','NOTIN_LOADLIST_FLG'],['A1','N'],['A01','N'],['B2','N'],['B3','Y'],['','N'],
+  ]),'Data');
+  const mutations:string[]=[];
+  page.on('request',req=>{const path=new URL(req.url()).pathname;if(path.startsWith('/api/') && path!=='/api/session' && req.method()==='POST') mutations.push(path);});
+  await page.route('**/api/operations/excel/preview',route=>route.fulfill({json:{workbook},headers:{'Cache-Control':'no-store'}}));
+  await page.goto('/');
+  await page.getByTestId('nav-container_tool').click();
+  await page.locator('input[type=file]').setInputFiles({name:'port-export.xls',mimeType:'application/vnd.ms-excel',buffer:Buffer.from(XLSX.write(workbook,{type:'buffer',bookType:'xlsx'}))});
+  await expect(page.getByRole('row',{name:'A01 2 B02 1',exact:true})).toBeVisible();
+  await expect(page.getByRole('row',{name:'TỔNG CỘNG ĐANG LƯU BÃI 3 Cont',exact:true})).toBeVisible();
+  await expect(page.getByText(/Chỉ xem thống kê — không lưu file hoặc kết quả/)).toBeVisible();
+  await page.getByTestId('nav-dashboard').click();
+  await page.getByTestId('nav-container_tool').click();
+  await expect(page.getByRole('row',{name:'TỔNG CỘNG ĐANG LƯU BÃI 3 Cont',exact:true})).toHaveCount(0);
+  expect(mutations).toEqual(['/api/operations/excel/preview']);
+});
+
+const incidentFixture={id:'incident-draft',code:'SC-TEST',time:'27/09/2026',location:'A01',violatorName:admin.fullName,normalizedName:admin.fullName,matchedEmployeeId:admin.id,matchedEmployeeCode:admin.employeeCode,matchedDepartment:'RTG ca 1',department:'RTG ca 1',isRtgRelated:true,isMatchedWithSystem:true,severity:'THAP',what:'Vụ việc kiểm thử',why:'Nguyên nhân thử',how:'Nhắc nhở',sourceAppendix:'PHU_LUC_1'};
+test('Incident draft deletion survives Realtime; confirmation clears drafts only on success',async({page})=>{
+  await page.setViewportSize({width:1366,height:1000});
+  await authenticated(page);const bus=await realtimeBus(page);
+  let saved:any[]=[incidentFixture,{...incidentFixture,id:'second',code:'SC-KEEP'}],fail=true,reads=0;
+  await page.route('**/api/records/incidents?*',route=>{reads++;return route.fulfill({json:{items:saved,nextCursor:null}});});
+  await page.route('**/api/operations/incidents/employees',route=>route.fulfill({json:[admin]}));
+  await page.route('**/api/operations/incidents/discard',route=>{const ids=route.request().postDataJSON().ids;saved=saved.filter(item=>!ids.includes(item.id));return route.fulfill({json:{success:true}});});
+  await page.route('**/api/operations/incidents/confirm',route=>{
+    if(fail)return route.fulfill({status:503,json:{error:'Đồng bộ thử thất bại'}});
+    saved=route.request().postDataJSON().items.map((item:any)=>({...item,isSyncedToProfile:true}));
+    return route.fulfill({json:{items:saved,count:1,updatedNames:[admin.fullName]}});
+  });
+  page.on('dialog',dialog=>dialog.accept());
+  await page.goto('/');await page.getByTestId('nav-violations').click();
+  await expect(page.getByRole('button',{name:'Bảng đối soát (2)',exact:true})).toBeVisible();
+  await page.getByRole('row').filter({hasText:'SC-TEST'}).getByTitle('Xóa vụ việc',{exact:true}).click();
+  await expect(page.getByRole('button',{name:'Bảng đối soát (1)',exact:true})).toBeVisible();
+  const before=reads;bus.emit('incidents');await expect.poll(()=>reads).toBeGreaterThan(before);
+  await expect(page.getByText('SC-TEST',{exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Đồng bộ vào Hồ sơ Nhân sự (Nội bộ)',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('Đồng bộ thử thất bại');
+  await expect(page.getByRole('button',{name:'Bảng đối soát (1)',exact:true})).toBeVisible();
+  fail=false;await page.getByRole('button',{name:'Đồng bộ vào Hồ sơ Nhân sự (Nội bộ)',exact:true}).click();
+  await expect(page.getByText('Đồng bộ Hồ sơ Thành công!',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Hoàn tất',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Bảng đối soát (0)',exact:true})).toBeVisible();
+  bus.emit('incidents');await page.getByRole('button',{name:'Đã đồng bộ (1)',exact:true}).click();
+  await expect(page.getByText('SC-KEEP',{exact:true})).toBeVisible();
+});
+test('Incident viewer receives published cases through Realtime without Google sync controls',async({page})=>{
+  await page.setViewportSize({width:1366,height:1000});
+  await authenticated(page,false,{...admin,id:'viewer',role:'USER',visibleTabs:['violations'],assignedPermissions:[]});
+  const bus=await realtimeBus(page);let saved:any[]=[];
+  await page.route('**/api/records/incidents?*',route=>route.fulfill({json:{items:saved,nextCursor:null}}));
+  await page.goto('/');await page.getByTestId('nav-violations').click();
+  await expect.poll(()=>bus.count('incidents')).toBe(1);
+  saved=[{...incidentFixture,isSyncedToProfile:true},{...incidentFixture,id:'hidden',code:'SC-HIDDEN'}];bus.emit('incidents');
+  await expect(page.getByText('SC-TEST',{exact:true})).toBeVisible();
+  await expect(page.getByText('SC-HIDDEN',{exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:/Data_RTG|Đồng bộ ngay|Hồ sơ Nhân sự/})).toHaveCount(0);
 });
 
 test('Google queue hides successes and automatically removes newly completed jobs',async({page})=>{

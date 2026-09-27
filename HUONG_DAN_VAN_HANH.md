@@ -275,3 +275,11 @@ Chi tiết phạm vi kiểm chứng và giới hạn hiện tại: [PRODUCTION_C
 Theo yêu cầu, khôi phục hộp thư và chat nhanh; thông báo vi phạm, giao bài, phép gửi vào ứng dụng. Kênh gửi Zalo đã ngừng ở server. Không cần tạo OA. Xem [HUONG_DAN_THONG_BAO_NOI_BO.md](HUONG_DAN_THONG_BAO_NOI_BO.md).
 
 Đã kiểm chứng bản chính thức quanlyrtg-00006-jhp (27/09/2026 10:16:48 UTC+7), 100% lưu lượng. Mở menu **Tin nhắn nội bộ** để soạn hoặc đọc hộp thư; biểu tượng tin nhắn trên cùng mở Chat nhanh.
+
+### Thống kê bãi chỉ xem
+
+Mở Công cụ xử lý dữ liệu tự động, chọn hoặc kéo thả Excel/XLS/CSV để xem bảng LINE A / LINE B. File và kết quả không được lưu vào Supabase, Google Drive hoặc Sheets. Đóng phân hệ hay tải lại trang sẽ xóa bảng đang xem; cần chọn lại file để tính lại. Quy tắc này chỉ áp dụng công cụ thống kê bãi.
+
+### Vi phạm và sự cố
+
+Người có quyền MANAGE_VIOLATIONS chọn file để trích xuất, kiểm tra và xóa dòng không cần ở Bảng đối soát, sau đó bấm Đồng bộ vào Hồ sơ Nhân sự (Nội bộ). Chỉ khi server xác nhận thành công các dòng mới rời bảng đối soát; đồng bộ toàn bộ thành công sẽ để bảng trống. Dữ liệu đã lưu xem ở Đã đồng bộ. Nếu lỗi, giữ bản đối soát và thử lại; hệ thống chống ghi/trừ điểm trùng. Người chỉ xem được cấp tab Vi phạm sẽ tự nhận các vụ việc đã đồng bộ qua Realtime, không cần thao tác Google/Excel. Các dòng chưa khớp nhân viên cần đối soát lại trước xác nhận.

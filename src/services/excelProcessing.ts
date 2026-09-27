@@ -10,6 +10,7 @@ export async function parseWorkbook(file: File, module: string) {
     method: "POST",
     body,
   });
-  pendingSources.set(module, result.source_job_id);
+  if (result.source_job_id) pendingSources.set(module, result.source_job_id);
+  else pendingSources.delete(module);
   return result.workbook;
 }

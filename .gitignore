@@ -13,6 +13,7 @@ google-credentials*.json
 supabase/.temp/
 
 artifacts/
+outputs/
 test-results/
 playwright-report/
 *.zip

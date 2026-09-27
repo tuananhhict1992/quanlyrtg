@@ -32,7 +32,7 @@ test('import rejects forged extensions, MIME mismatches, binary CSV and oversize
   await assert.rejects(()=>parseSpreadsheet(Buffer.from(XLSX.write(large,{type:'buffer',bookType:'xlsx'})),'application/octet-stream','many.xlsx'),(e:any)=>e.status===413);
 });
 
-test('multipart port export preview stores canonical MIME and retains source until confirmed and archived',async()=>{
+test('yard preview does not persist files, results or sync jobs; other imports still stage sources',async()=>{
   const db=await testDatabase(), savedConnect=pool.connect;
   (pool as any).connect=async()=>({query:(sql:string,args:any[]=[])=>db.query(sql,args),release(){}});
   let role='ADMIN';
@@ -42,13 +42,19 @@ test('multipart port export preview stores canonical MIME and retains source unt
   app.use((e:any,_req:any,res:any,_next:any)=>res.status(e.status||500).json({error:e.message}));
   try {
     const bytes=Buffer.from(XLSX.write(book(),{type:'buffer',bookType:'xlsx'}));
-    const upload=()=>request(app).post('/excel/preview').field('module','shipProductivity').attach('file',bytes,{filename:'port-export.xls',contentType:'application/vnd.ms-excel'});
+    const upload=(module='shipProductivity')=>request(app).post('/excel/preview').field('module',module).attach('file',bytes,{filename:'port-export.xls',contentType:'application/vnd.ms-excel'});
     const response=await upload();assert.equal(response.status,200,JSON.stringify(response.body));
     assert.deepEqual(XLSX.utils.sheet_to_json(response.body.workbook.Sheets.Data,{header:1}),rows);
-    const staged=(await db.query<any>('select q.payload,q.status,t.bytes,t.business_saved_at,t.archived_at from private.sync_queue q join private.temporary_files t using(job_id) where q.job_id=$1',[response.body.source_job_id])).rows[0];
+    assert.equal(response.body.source_job_id,undefined);
+    assert.equal(response.headers['cache-control'],'no-store');
+    for(const table of ['temporary_files','sync_queue','records'])
+      assert.equal(Number((await db.query<any>(`select count(*) as n from private.${table}`)).rows[0].n),0,table);
+    role='USER';assert.equal((await upload()).status,403);
+    role='ADMIN';
+    const employeePreview=await upload('employees');assert.equal(employeePreview.status,200);
+    const staged=(await db.query<any>('select q.payload,q.status,t.bytes,t.business_saved_at,t.archived_at from private.sync_queue q join private.temporary_files t using(job_id) where q.job_id=$1',[employeePreview.body.source_job_id])).rows[0];
     assert.equal(staged.payload.mimeType,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     assert.equal(staged.status,'pending');assert.equal(staged.business_saved_at,null);assert.equal(staged.archived_at,null);
     assert.deepEqual(Buffer.from(staged.bytes),bytes);
-    role='USER';assert.equal((await upload()).status,403);
   }finally{(pool as any).connect=savedConnect;await db.close();}
 });

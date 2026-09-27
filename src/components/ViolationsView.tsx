@@ -1,6 +1,6 @@
 import {api} from '../services/supabase';
 import {GoogleReportDialog} from './GoogleReportActions';
-import {parseWorkbook} from '../services/excelProcessing';
+import {parseWorkbook, sourceForModule, clearSource} from '../services/excelProcessing';
 import {GoogleSyncPanel} from './GoogleSyncPanel';
 import React, { useState, useMemo, useRef } from 'react';
 import {
@@ -58,6 +58,7 @@ interface ViolationsViewProps {
   incidents?: IncidentViolation[];
   onNotifyZalo?: (incident: IncidentViolation) => void;
   onUpdateIncidents?: (updated: IncidentViolation[]) => void;
+  onDiscardIncidents?: (ids: string[]) => void;
   onUpdateEmployee: (updated: Employee) => void;
   onBatchUpdateEmployees?: (updatedList: Employee[]) => void;
   onAddEmployee?: (newEmp: Employee) => void;
@@ -69,9 +70,10 @@ interface ViolationsViewProps {
 
 export const ViolationsView: React.FC<ViolationsViewProps> = ({
   currentUser,
-  employees,
+  employees: profileEmployees,
   incidents: propIncidents,
   onUpdateIncidents,
+  onDiscardIncidents,
   onNotifyZalo,
   onUpdateEmployee,
   onBatchUpdateEmployees,
@@ -81,28 +83,17 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   onSaveAppSettings,
   onNavigateToPermissions,
 }) => {
-  // Trạng thái danh sách sự cố đã đối soát & trích xuất (Tổ RTG)
-  const [incidents,setIncidents]=useState<IncidentViolation[]>(propIncidents||[]);
-
-  // Đồng bộ với propIncidents khi component cha cập nhật
-  React.useEffect(() => {
-    if (propIncidents) {
-      setIncidents(propIncidents);
-    }
-  }, [propIncidents]);
-
-  // Hàm cập nhật danh sách sự cố đồng thời lưu localStorage và báo lên App.tsx (sử dụng setTimeout để tránh cập nhật state trong render)
-  const updateIncidentsState = (
-    updater: IncidentViolation[] | ((prev: IncidentViolation[]) => IncidentViolation[])
-  ) => {
-    setIncidents((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      setTimeout(() => {
-        onUpdateIncidents?.(next);
-      }, 0);
-      return next;
-    });
-  };
+  const [draftIncidents,setDraftIncidents]=useState<IncidentViolation[]>([]);
+  const [viewMode,setViewMode]=useState<'DRAFT'|'PUBLISHED'>('DRAFT');
+  const [directory,setDirectory]=useState<Employee[]>([]);
+  const [directoryReady,setDirectoryReady]=useState(false);
+  const [draftSourceJobId,setDraftSourceJobId]=useState<string | undefined>();
+  const [isSyncingProfiles,setIsSyncingProfiles]=useState(false);
+  const [operationError,setOperationError]=useState<string | null>(null);
+  const initializedDrafts=useRef(false);
+  const syncLock=useRef(false);
+  const employees=directory.length ? directory : profileEmployees;
+  const updateIncidentsState: typeof setDraftIncidents = setDraftIncidents;
 
   const [inputTab, setInputTab] = useState<'EXCEL' | 'TEXT'>('EXCEL');
   const [rawTextInput, setRawTextInput] = useState<string>('');
@@ -138,14 +129,25 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   );
 
   // Phân quyền quản trị vi phạm
-  const canManageViolations =
-    currentUser.role === 'ADMIN' ||
-    currentUser.role === 'MANAGER' ||
-    currentUser.role === 'MANAGER_L1' ||
-    currentUser.role === 'MANAGER_L2' ||
-    currentUser.assignedPermissions.includes('MANAGE_VIOLATIONS') ||
-    currentUser.assignedPermissions.includes('MANAGE_VIOLATIONS') ||
-    currentUser.assignedPermissions.includes('MANAGE_HR');
+  const canManageViolations = currentUser.role==='ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_VIOLATIONS');
+  const publishedIncidents=(propIncidents || []).filter(item=>item.isSyncedToProfile===true);
+  const incidents=canManageViolations && viewMode==='DRAFT' ? draftIncidents : publishedIncidents;
+  React.useEffect(()=>{
+    if(!canManageViolations)return;
+    let active=true;
+    api<Employee[]>('/operations/incidents/employees').then(rows=>{if(active){setDirectory(rows);setDirectoryReady(true);}}).catch(error=>{if(active)setOperationError(error.message);});
+    return()=>{active=false;};
+  },[canManageViolations,currentUser.id]);
+  React.useEffect(()=>{
+    if(!canManageViolations)return;
+    if(!initializedDrafts.current && propIncidents?.length) {
+      initializedDrafts.current=true;
+      setDraftIncidents(propIncidents.filter(item=>item.isSyncedToProfile!==true));
+    } else {
+      const publishedIds=new Set((propIncidents || []).filter(item=>item.isSyncedToProfile===true).map(item=>item.id));
+      setDraftIncidents(previous=>previous.filter(item=>!publishedIds.has(item.id)));
+    }
+  },[propIncidents,canManageViolations]);
 
   // Danh sách các vụ việc liên quan đến tài khoản người dùng hiện tại
   const myIncidents = useMemo(() => {
@@ -207,10 +209,9 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
     ignoredCount: number;
     fileName?: string;
   }>({
-    totalScanned: 6,
-    matchedCount: 4,
-    ignoredCount: 2,
-    fileName: 'Dữ liệu mẫu chuẩn hóa đối soát Tổ RTG',
+    totalScanned: 0,
+    matchedCount: 0,
+    ignoredCount: 0,
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -317,7 +318,8 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   // Xử lý tải file Excel & đối soát với nhân sự hệ thống
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || isProcessing || syncLock.current) return;
+    if (!directoryReady) {setOperationError('Đang tải danh sách nhân sự để đối soát. Vui lòng thử lại sau.');return;}
 
     setIsProcessing(true);
     const reader = new FileReader();
@@ -329,6 +331,10 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
 
         // ĐỐI SOÁT VỚI DANH SÁCH NHÂN VIÊN HỆ THỐNG VÀ LỌC ĐỘC QUYỀN TỔ RTG
         const report = parseExcelViolationsFile(workbook, employees);
+        setDraftSourceJobId(sourceForModule('incidents'));
+        initializedDrafts.current=true;
+        setViewMode('DRAFT');
+        updateIncidentsState(report.items);
 
         setLastReconciliationStats({
           totalScanned: report.totalFileRows,
@@ -337,9 +343,8 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
           fileName: file.name,
         });
 
-        if (report.items.length > 0) {
-          updateIncidentsState(report.items);
-        } else {
+        if (report.items.length === 0) {
+          setDraftSourceJobId(undefined);clearSource('incidents');
           alert(
             `Đã quét ${report.totalFileRows} dòng trong file: Không tìm thấy sự cố nào thuộc Tổ RTG khớp với danh sách nhân sự của hệ thống. Các nội dung ngoài Tổ RTG (Đầu kéo, Xe nâng...) đã được tự động loại bỏ.`
           );
@@ -363,6 +368,8 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
 
   // Phân tích văn bản & đối soát nhân viên
   const handleAnalyzeText = () => {
+    if(isProcessing || syncLock.current)return;
+    if(!directoryReady){setOperationError('Đang tải danh sách nhân sự để đối soát. Vui lòng thử lại sau.');return;}
     if (!rawTextInput.trim()) {
       alert('Vui lòng dán nội dung diễn biến hoặc bảng báo cáo sự cố.');
       return;
@@ -371,6 +378,8 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
     setIsProcessing(true);
     try {
       const report = parseRawTextViolations(rawTextInput, employees);
+      clearSource('incidents');
+      setDraftSourceJobId(undefined);
 
       setLastReconciliationStats({
         totalScanned: report.totalFileRows,
@@ -380,7 +389,9 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
       });
 
       if (report.items.length > 0) {
-        updateIncidentsState(report.items);
+        initializedDrafts.current=true;
+          setViewMode('DRAFT');
+          updateIncidentsState(report.items);
         setRawTextInput('');
       } else {
         alert(
@@ -397,8 +408,10 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
 
   // Nạp dữ liệu mẫu
   const handleLoadSample = () => {
+    if(isProcessing || syncLock.current)return;
     const sample = generateSamplePortIncidents(employees);
-    updateIncidentsState(sample);
+    initializedDrafts.current=true; clearSource('incidents'); setDraftSourceJobId(undefined); setViewMode('DRAFT');
+    updateIncidentsState(sample.map(item=>({...item,isSyncedToProfile:false})));
     setLastReconciliationStats({
       totalScanned: 6,
       matchedCount: sample.length,
@@ -408,11 +421,26 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   };
 
   // Xóa trắng dữ liệu danh sách để tải báo cáo mới
+  const removeDrafts = async (items: IncidentViolation[]) => {
+    if(syncLock.current || isProcessing)return;
+    setOperationError(null);
+    try {
+      const storedIds=new Set((propIncidents || []).filter(item=>item.isSyncedToProfile!==true).map(item=>item.id));
+      const stored=items.filter(item=>storedIds.has(item.id));
+      if(stored.length)await api('/operations/incidents/discard',{method:'POST',body:JSON.stringify({ids:stored.map(item=>item.id)})});
+      const removed=new Set(items.map(item=>item.id));
+      onDiscardIncidents?.([...removed]);
+      initializedDrafts.current=true;
+      setDraftIncidents(previous=>previous.filter(item=>!removed.has(item.id)));
+      if(items.length===draftIncidents.length) {
+        setLastReconciliationStats({totalScanned:0,matchedCount:0,ignoredCount:0});
+        clearSource('incidents');
+        setDraftSourceJobId(undefined);
+      }
+    } catch(error:any) {setOperationError(error.message);}
+  };
   const handleClearIncidents = () => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa toàn bộ danh sách sự cố/vi phạm hiện tại để tải báo cáo mới?')) {
-      updateIncidentsState([]);
-      setLastReconciliationStats(null);
-    }
+    if(window.confirm('Xóa toàn bộ bảng đối soát đang chờ? Các vụ việc đã đồng bộ vẫn được giữ.')) void removeDrafts(draftIncidents);
   };
 
   // Sao chép Markdown Table (8 cột chuẩn)
@@ -438,244 +466,33 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
     exportViolationsToExcel(currentReport);
   };
 
-  // Đồng bộ tất cả vào Hồ sơ Nhân sự
-  const handleSyncToEmployeeProfiles = () => {
-    const rtgItems = incidents.filter((i) => i.isRtgRelated);
-    if (rtgItems.length === 0) {
-      alert('Không có vụ việc nào của Tổ RTG để đồng bộ.');
-      return;
-    }
-
-    const updatedEmployeesMap = new Map<string, Employee>();
-    const updatedNames: string[] = [];
-    let syncedIncidentCount = 0;
-
-    rtgItems.forEach((inc) => {
-      // Tìm nhân viên theo matchedEmployeeId trước, nếu không có thì tìm theo tên
-      let foundEmp = inc.matchedEmployeeId
-        ? employees.find((e) => e.id === inc.matchedEmployeeId)
-        : null;
-
-      if (!foundEmp) {
-        const targetName = (inc.normalizedName || inc.violatorName).trim().toLowerCase();
-        const targetNoTone = removeVietnameseTones(targetName).trim();
-        foundEmp = employees.find((e) => {
-          const empName = e.fullName.trim().toLowerCase();
-          const empNoTone = removeVietnameseTones(e.fullName).trim();
-          return (
-            empName === targetName ||
-            empNoTone === targetNoTone ||
-            (targetName.length >= 6 && (empName.includes(targetName) || targetName.includes(empName))) ||
-            (targetNoTone.length >= 6 && (empNoTone.includes(targetNoTone) || targetNoTone.includes(empNoTone)))
-          );
-        }) || null;
-
-        // Tìm thêm trong INITIAL_EMPLOYEES nếu state chưa cập nhật
-        if (!foundEmp) {
-          foundEmp = employees.find((e) => {
-            const empName = e.fullName.trim().toLowerCase();
-            const empNoTone = removeVietnameseTones(e.fullName).trim();
-            return (
-              empName === targetName ||
-              empNoTone === targetNoTone ||
-              (targetName.length >= 6 && (empName.includes(targetName) || targetName.includes(empName))) ||
-              (targetNoTone.length >= 6 && (empNoTone.includes(targetNoTone) || targetNoTone.includes(empNoTone)))
-            );
-          }) || null;
-        }
-
-        // Tự động tạo mới hồ sơ nếu là nhân sự mới được nhận diện từ biên bản
-        if (!foundEmp && inc.violatorName && !inc.violatorName.includes('Chưa chỉ đích danh') && !inc.violatorName.includes('Tập thể')) {
-          const newCode = `NV-${String(employees.length + updatedEmployeesMap.size + 1).padStart(3, '0')}`;
-          const newId = `emp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-          foundEmp = {
-            id: newId,
-            username: removeVietnameseTones(inc.violatorName).replace(/\s+/g, ''),
-            employeeCode: newCode,
-            fullName: inc.violatorName,
-            department: inc.matchedDepartment || 'RTG ca 2',
-            position: 'Lái cẩu RTG',
-            role: 'USER',
-            status: 'ACTIVE',
-            competencyScore: 85,
-            quizzesCompleted: 0,
-            violationCount: 0,
-            proposalsCount: 0,
-            joinDate: new Date().toISOString().split('T')[0],
-            assignedPermissions: [],
-            violationRecords: [], email: '', phone: '', zaloPhone: '', zaloSynced: false, avatar: '',
-          };
-          if (onAddEmployee) onAddEmployee(foundEmp);
-        }
-      }
-
-      if (foundEmp) {
-        const currentEmp = updatedEmployeesMap.get(foundEmp.id) || { ...foundEmp };
-        const currentRecords = currentEmp.violationRecords || [];
-
-        const alreadyRecorded = currentRecords.some((r) => r.incidentCode === inc.code);
-        if (!alreadyRecorded) {
-          const pointsDeduct = inc.severity === 'NGHIEM_TRONG' ? 15 : inc.severity === 'TRUNG_BINH' ? 10 : 5;
-          const newRecord = {
-            id: `vr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            incidentCode: inc.code,
-            time: inc.time,
-            location: inc.location,
-            what: inc.what,
-            why: inc.why,
-            how: inc.how,
-            equipment: inc.equipment,
-            severity: (inc.severity === 'NGHIEM_TRONG' ? 'HIGH' : inc.severity === 'TRUNG_BINH' ? 'MEDIUM' : 'LOW') as
-              | 'LOW'
-              | 'MEDIUM'
-              | 'HIGH',
-            pointsDeducted: pointsDeduct,
-            recordedAt: new Date().toISOString(),
-          };
-
-          currentEmp.violationRecords = [newRecord, ...currentRecords];
-          currentEmp.violationCount = (currentEmp.violationCount || 0) + 1;
-          currentEmp.competencyScore = Math.max(0, (currentEmp.competencyScore || 100) - pointsDeduct);
-
-          updatedEmployeesMap.set(currentEmp.id, currentEmp);
-          syncedIncidentCount++;
-          if (!updatedNames.includes(currentEmp.fullName)) {
-            updatedNames.push(currentEmp.fullName);
-          }
-        }
-      }
-    });
-
-    // Cập nhật lên hệ thống
-    if (onBatchUpdateEmployees && updatedEmployeesMap.size > 0) {
-      onBatchUpdateEmployees(Array.from(updatedEmployeesMap.values()));
-    } else {
-      updatedEmployeesMap.forEach((emp) => {
-        onUpdateEmployee(emp);
+  const confirmDrafts = async (items: IncidentViolation[]) => {
+    if(syncLock.current || isProcessing || !items.length)return;
+    if(!window.confirm('Đồng bộ ' + items.length + ' vụ việc vào hệ thống và hồ sơ nhân sự?'))return;
+    syncLock.current=true;setIsSyncingProfiles(true);setOperationError(null);
+    try {
+      const saved=await api<{items:IncidentViolation[];count:number;updatedNames:string[]}>('/operations/incidents/confirm',{
+        method:'POST',body:JSON.stringify({items,source_job_id:draftSourceJobId}),
       });
-    }
-
-    // Đánh dấu đã đồng bộ
-    updateIncidentsState((prev) =>
-      prev.map((i) => (i.isRtgRelated ? { ...i, isSyncedToProfile: true } : i))
-    );
-
-    setSyncSuccessModal({
-      count: syncedIncidentCount,
-      updatedNames,
-    });
-  };
-
-  // Đồng bộ riêng 1 vụ việc
-  const handleSyncSingleIncident = (inc: IncidentViolation) => {
-    let foundEmp = inc.matchedEmployeeId
-      ? employees.find((e) => e.id === inc.matchedEmployeeId)
-      : null;
-
-    if (!foundEmp) {
-      const targetName = (inc.normalizedName || inc.violatorName).trim().toLowerCase();
-      const targetNoTone = removeVietnameseTones(targetName).trim();
-      foundEmp = employees.find((e) => {
-        const empName = e.fullName.trim().toLowerCase();
-        const empNoTone = removeVietnameseTones(e.fullName).trim();
-        return (
-          empName === targetName ||
-          empNoTone === targetNoTone ||
-          (targetName.length >= 6 && (empName.includes(targetName) || targetName.includes(empName))) ||
-          (targetNoTone.length >= 6 && (empNoTone.includes(targetNoTone) || targetNoTone.includes(empNoTone)))
-        );
-      }) || null;
-
-      if (!foundEmp) {
-        foundEmp = employees.find((e) => {
-          const empName = e.fullName.trim().toLowerCase();
-          const empNoTone = removeVietnameseTones(e.fullName).trim();
-          return (
-            empName === targetName ||
-            empNoTone === targetNoTone ||
-            (targetName.length >= 6 && (empName.includes(targetName) || targetName.includes(empName))) ||
-            (targetNoTone.length >= 6 && (empNoTone.includes(targetNoTone) || targetNoTone.includes(empNoTone)))
-          );
-        }) || null;
+      const confirmedIds=new Set(items.map(item=>item.id));
+      setDraftIncidents(previous=>previous.filter(item=>!confirmedIds.has(item.id)));
+      initializedDrafts.current=true;
+      onUpdateIncidents?.(saved.items);
+      if(items.length===draftIncidents.length) {
+        setLastReconciliationStats({totalScanned:0,matchedCount:0,ignoredCount:0});
+        clearSource('incidents');
+        setDraftSourceJobId(undefined);
       }
-
-      // Tự động tạo hồ sơ nhân sự mới nếu chưa có trong hệ thống
-      if (!foundEmp && inc.violatorName && !inc.violatorName.includes('Chưa chỉ đích danh') && !inc.violatorName.includes('Tập thể')) {
-        const newCode = `NV-${String(employees.length + 1).padStart(3, '0')}`;
-        const newId = `emp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-        foundEmp = {
-          id: newId,
-          username: removeVietnameseTones(inc.violatorName).replace(/\s+/g, ''),
-          employeeCode: newCode,
-          fullName: inc.violatorName,
-          department: inc.matchedDepartment || 'RTG ca 2',
-          position: 'Lái cẩu RTG',
-          role: 'USER',
-          status: 'ACTIVE',
-          competencyScore: 85,
-          quizzesCompleted: 0,
-          violationCount: 0,
-          proposalsCount: 0,
-          joinDate: new Date().toISOString().split('T')[0],
-          assignedPermissions: [],
-          violationRecords: [], email: '', phone: '', zaloPhone: '', zaloSynced: false, avatar: '',
-        };
-        if (onAddEmployee) onAddEmployee(foundEmp);
-      }
-    }
-
-    if (!foundEmp) {
-      alert(`Không thể xác định nhân viên "${inc.violatorName}" để đồng bộ hồ sơ.`);
-      return;
-    }
-
-    const currentRecords = foundEmp.violationRecords || [];
-    const alreadyRecorded = currentRecords.some((r) => r.incidentCode === inc.code);
-    if (alreadyRecorded) {
-      alert(`Vụ việc ${inc.code} đã được đồng bộ vào hồ sơ của ${foundEmp.fullName} trước đó.`);
-      updateIncidentsState((prev) => prev.map((item) => (item.id === inc.id ? { ...item, isSyncedToProfile: true } : item)));
-      return;
-    }
-
-    const pointsDeduct = inc.severity === 'NGHIEM_TRONG' ? 15 : inc.severity === 'TRUNG_BINH' ? 10 : 5;
-    const newRecord = {
-      id: `vr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      incidentCode: inc.code,
-      time: inc.time,
-      location: inc.location,
-      what: inc.what,
-      why: inc.why,
-      how: inc.how,
-      equipment: inc.equipment,
-      severity: (inc.severity === 'NGHIEM_TRONG' ? 'HIGH' : inc.severity === 'TRUNG_BINH' ? 'MEDIUM' : 'LOW') as
-        | 'LOW'
-        | 'MEDIUM'
-        | 'HIGH',
-      pointsDeducted: pointsDeduct,
-      recordedAt: new Date().toISOString(),
-    };
-
-    const updatedEmp: Employee = {
-      ...foundEmp,
-      violationRecords: [newRecord, ...currentRecords],
-      violationCount: (foundEmp.violationCount || 0) + 1,
-      competencyScore: Math.max(0, (foundEmp.competencyScore || 100) - pointsDeduct),
-    };
-
-    onUpdateEmployee(updatedEmp);
-
-    updateIncidentsState((prev) =>
-      prev.map((item) => (item.id === inc.id ? { ...item, isSyncedToProfile: true } : item))
-    );
-
-    setSyncSuccessModal({
-      count: 1,
-      updatedNames: [foundEmp.fullName],
-    });
+      setSyncSuccessModal({count:saved.count,updatedNames:saved.updatedNames});
+    } catch(error:any) {setOperationError(error.message || 'Đồng bộ chưa thành công. Bảng đối soát được giữ để thử lại.');}
+    finally {syncLock.current=false;setIsSyncingProfiles(false);}
   };
+  const handleSyncToEmployeeProfiles=()=>confirmDrafts(draftIncidents.filter(item=>item.isRtgRelated));
+  const handleSyncSingleIncident=(item:IncidentViolation)=>confirmDrafts([item]);
 
   return (
     <div className="space-y-6 pb-12">
+      {operationError && <div role="alert" className="p-4 rounded-xl bg-rose-50 text-rose-800">{operationError}</div>}
       {/* 1. Header Banner & Quy chuẩn */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-700/50 relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -716,16 +533,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 </span>
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={handleFetchFromDataRtgSheet}
-                disabled={isSyncingDataRtg}
-                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-indigo-600/30 hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
-                title="Tải lại dữ liệu mới nhất từ file Data_RTG (sheet TheoDoiViPham)"
-              >
-                <RefreshCw className={`w-4 h-4 ${isSyncingDataRtg ? 'animate-spin' : ''}`} />
-                <span>{isSyncingDataRtg ? 'Đang đọc Data_RTG...' : 'Làm mới từ Data_RTG'}</span>
-              </button>
+              <span className="px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-xs font-bold">Tự động cập nhật Realtime</span>
             )}
             <button
               onClick={handleExportExcel}
@@ -758,8 +566,8 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
             <div className="flex items-start gap-2.5 bg-slate-800/60 p-3 rounded-xl border border-slate-700/50">
               <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-slate-100 block">Đồng bộ Sheet TheoDoiViPham:</span>
-                Tự động đồng bộ và tra cứu tức thì từ sheet TheoDoiViPham thuộc file Data_RTG.
+                <span className="font-bold text-slate-100 block">Xác nhận vào hệ thống:</span>
+                Kiểm tra bảng đối soát trước khi đồng bộ. Vụ việc đã lưu tự động cập nhật cho người có quyền xem.
               </div>
             </div>
           </div>
@@ -769,7 +577,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
               <BookOpen className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold text-slate-100 block">Nguồn dữ liệu Chuẩn hóa:</span>
-                Trích xuất trực tiếp từ file <strong className="text-white font-mono">Data_RTG</strong> (mục sheet <strong className="text-emerald-300">TheoDoiViPham</strong>).
+                Tra cứu các vụ việc đã được người có thẩm quyền xác nhận vào hệ thống RTG.
               </div>
             </div>
             <div className="flex items-start gap-2.5 bg-slate-800/60 p-3 rounded-xl border border-slate-700/50">
@@ -875,7 +683,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
             {incidents.filter((i) => i.isRtgRelated).length}
           </div>
           <div className="text-xs text-emerald-600 font-semibold mt-1 flex items-center gap-1">
-            <span>✓ {canManageViolations ? 'Khớp nhân sự hệ thống' : 'Ghi nhận trên Data_RTG'}</span>
+            <span>✓ {canManageViolations ? 'Khớp nhân sự hệ thống' : 'Đã ghi nhận trên hệ thống'}</span>
           </div>
         </div>
 
@@ -976,6 +784,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
               </div>
             </div>
             <button
+              disabled={isSyncingProfiles || isProcessing || !draftIncidents.length}
               onClick={handleSyncToEmployeeProfiles}
               className="w-full py-2.5 px-3 mt-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
             >
@@ -987,27 +796,19 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
           <div className="bg-white p-5 rounded-2xl border border-emerald-200 shadow-xs flex flex-col justify-between bg-gradient-to-b from-emerald-50/30 to-white">
             <div>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Nguồn Data_RTG</span>
+                <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Dữ liệu hệ thống</span>
                 <span className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
                   <FileSpreadsheet className="w-5 h-5" />
                 </span>
               </div>
               <div className="text-xs text-slate-700 font-semibold mt-2">
-                Sheet: <span className="font-mono text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">TheoDoiViPham</span>
+                Vụ việc đã xác nhận
               </div>
               <div className="text-[11px] text-slate-500 mt-1">
-                Xem trước khi nhập báo cáo Google; xếp hàng khi xuất dữ liệu đã lưu.
+                Tự động cập nhật khi có thay đổi, không cần bấm đồng bộ.
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleFetchFromDataRtgSheet}
-              disabled={isSyncingDataRtg}
-              className="w-full py-2 px-3 mt-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingDataRtg ? 'animate-spin' : ''}`} />
-              <span>{isSyncingDataRtg ? 'Đang đọc...' : 'Tải lại dữ liệu mới'}</span>
-            </button>
+            <span className="text-xs text-emerald-200">Tự động cập nhật Realtime</span>
           </div>
         )}
       </div>
@@ -1288,6 +1089,10 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
         </div>
       )}
 
+      {canManageViolations && <div className="flex gap-2">
+        <button className="px-4 py-2 rounded-xl border text-sm font-bold" aria-pressed={viewMode==='DRAFT'} onClick={()=>setViewMode('DRAFT')}>Bảng đối soát ({draftIncidents.length})</button>
+        <button className="px-4 py-2 rounded-xl border text-sm font-bold" aria-pressed={viewMode==='PUBLISHED'} onClick={()=>setViewMode('PUBLISHED')}>Đã đồng bộ ({publishedIncidents.length})</button>
+      </div>}
       {/* 5. Bảng Kết Quả Đối Soát & Đồng Bộ Hồ Sơ / Bảng Tra Cứu Vi Phạm */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/60">
@@ -1295,13 +1100,13 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
             <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
               <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
               {canManageViolations
-                ? `Bảng Đối Soát & Đồng Bộ Hồ Sơ Tổ RTG (${filteredIncidents.length} vụ việc)`
-                : `Bảng Thông Tin Vi Phạm & Sự Cố Tổ RTG (Sheet TheoDoiViPham: ${filteredIncidents.length} vụ việc)`}
+                ? (viewMode==='DRAFT' ? `Bảng Đối Soát & Đồng Bộ Hồ Sơ Tổ RTG (${filteredIncidents.length} vụ việc)` : `Vụ việc đã đồng bộ (${filteredIncidents.length})`)
+                : `Bảng Thông Tin Vi Phạm & Sự Cố Tổ RTG (${filteredIncidents.length} vụ việc)`}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               {canManageViolations
                 ? 'Chỉ hiển thị các sự cố liên quan trực tiếp đến Tổ RTG (Cẩu khung) đã khớp với nhân sự hệ thống.'
-                : 'Dữ liệu được trích xuất và đồng bộ từ file Data_RTG (mục sheet TheoDoiViPham) để phổ biến kinh nghiệm an toàn.'}
+                : 'Dữ liệu đã được người có thẩm quyền xác nhận, tự động cập nhật từ hệ thống để phổ biến kinh nghiệm an toàn.'}
             </p>
           </div>
 
@@ -1318,7 +1123,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
             ) : (
               <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200 flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                Đồng bộ Data_RTG
+                Cập nhật Realtime
               </span>
             )}
           </div>
@@ -1480,6 +1285,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                             </span>
                           ) : (
                             <button
+                              disabled={isSyncingProfiles}
                               onClick={() => handleSyncSingleIncident(item)}
                               className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold transition-colors cursor-pointer"
                               title="Đồng bộ vụ việc này vào hồ sơ nhân sự"
@@ -1515,11 +1321,12 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        {canManageViolations && (
+                        {canManageViolations && viewMode==='DRAFT' && (
                           <button
+                            disabled={isSyncingProfiles}
                             onClick={() => {
                               if (confirm(`Bạn có chắc muốn xóa vụ việc ${item.code}?`)) {
-                                updateIncidentsState((prev) => prev.filter((p) => p.id !== item.id));
+                                void removeDrafts([item]);
                               }
                             }}
                             className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg transition-colors cursor-pointer ml-1"
@@ -1548,22 +1355,14 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
               </div>
               <div>
                 <h4 className="font-extrabold text-base text-white">
-                  Phổ Biến An Toàn Vận Hành & Đồng Bộ File Data_RTG (Sheet TheoDoiViPham)
+                  Phổ Biến An Toàn Vận Hành
                 </h4>
                 <p className="text-xs text-indigo-200/80">
                   Dữ liệu vi phạm và sự cố được trích xuất minh bạch để toàn bộ nhân viên Tổ RTG rút kinh nghiệm
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleFetchFromDataRtgSheet}
-              disabled={isSyncingDataRtg}
-              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingDataRtg ? 'animate-spin' : ''}`} />
-              <span>{isSyncingDataRtg ? 'Đang đồng bộ...' : 'Đồng bộ từ Data_RTG'}</span>
-            </button>
+            <span className="text-xs text-emerald-200">Tự động cập nhật Realtime</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
@@ -1598,7 +1397,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
               ℹ Nhân viên có thắc mắc hoặc yêu cầu phúc tra thông tin vi phạm vui lòng liên hệ Ban Quản đốc hoặc Tổ trưởng Ca trực RTG.
             </span>
             <span className="font-mono text-indigo-300">
-              Nguồn: Data_RTG.xlsx ➔ Sheet: TheoDoiViPham
+              Nguồn: Hệ thống quản lý RTG
             </span>
           </div>
         </div>
@@ -1736,7 +1535,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
               <div>
-                {(currentUser.role === 'ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_VIOLATIONS')) && selectedIncidentForDetail.isRtgRelated && onNotifyZalo && <button type="button" className="px-4 py-2 rounded-lg bg-blue-700 text-white" onClick={() => { onNotifyZalo(selectedIncidentForDetail); setSelectedIncidentForDetail(null); }}>Thông báo nội bộ</button>}
+                {(currentUser.role === 'ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_VIOLATIONS')) && selectedIncidentForDetail.isSyncedToProfile && selectedIncidentForDetail.isRtgRelated && onNotifyZalo && <button type="button" className="px-4 py-2 rounded-lg bg-blue-700 text-white" onClick={() => { onNotifyZalo(selectedIncidentForDetail); setSelectedIncidentForDetail(null); }}>Thông báo nội bộ</button>}
                 {canManageViolations && !selectedIncidentForDetail.isSyncedToProfile ? (
                   <button
                     onClick={() => {
@@ -2102,5 +1901,3 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
     </div>
   );
 };
-
-

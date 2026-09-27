@@ -1,4 +1,3 @@
-import {saveDocumentsBatch} from '../services/supabase';
 import {parseWorkbook} from '../services/excelProcessing';
 import React, { useState, useRef } from 'react';
 import {
@@ -215,15 +214,12 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
     return compiled;
   };
 
-  const handleFileUpload = (file: File) => {
-    if (!file) return;
+  const handleFileUpload = async (file: File) => {
+    if (!file || isProcessing) return;
     setIsProcessing(true);
     setErrorMessage(null);
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
+    setResult(null);
       try {
-        const buffer = e.target?.result as ArrayBuffer;
         const workbook = await parseWorkbook(file,'shipProductivity');
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
@@ -232,7 +228,7 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
           defval: '',
         });
 
-        const compiled=processExcelData(rows, file.name);if(compiled){const id=crypto.randomUUID();await saveDocumentsBatch('shipProductivity',[{id,data:{...compiled,id}}]);}
+        processExcelData(rows, file.name);
       } catch (err: any) {
         console.error('Lỗi phân tích file Excel:', err);
         setErrorMessage(
@@ -241,14 +237,6 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
       } finally {
         setIsProcessing(false);
       }
-    };
-
-    reader.onerror = () => {
-      setIsProcessing(false);
-      setErrorMessage('Đã xảy ra lỗi khi đọc tệp tin.');
-    };
-
-    reader.readAsArrayBuffer(file);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -396,7 +384,7 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Kéo thả file Excel để tự động thống kê LINE A / LINE B. Không lưu trữ file trên máy chủ.
+                Kéo thả file Excel để xem bảng thống kê LINE A / LINE B. Kết quả chỉ hiển thị trong lần xem hiện tại.
               </p>
             </div>
           </div>
@@ -443,6 +431,7 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
         <input
           ref={fileInputRef}
           type="file"
+          disabled={isProcessing}
           accept=".xlsx, .xls, .csv"
           className="hidden"
           onChange={(e) => {
@@ -483,7 +472,7 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
           {/* Privacy & Security Guarantee */}
           <div className="mt-2 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-medium">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Không lưu trữ file: Tệp chỉ đọc tạm trên bộ nhớ máy và xóa sạch sau khi tra cứu.</span>
+            <span>Chỉ xem thống kê — không lưu file hoặc kết quả lên hệ thống, Google Drive hay Sheets.</span>
           </div>
         </div>
       </div>

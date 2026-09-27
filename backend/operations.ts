@@ -9,7 +9,19 @@ import { parseSpreadsheet } from './spreadsheet-import';
 import { validModule, MODULE_PERMISSIONS } from "./security";
 import { generateBxxlHtml } from "../src/services/bxxlTemplate";
 import { finalizeRanking } from './rankings';
+import { confirmIncidents, discardIncidentDrafts } from './incidents';
 export const operationsRouter = Router();
+operationsRouter.get('/incidents/employees',asyncRoute(async(req,res)=>{
+  assertPermission(req.user,'MANAGE_VIOLATIONS');
+  const result=await pool.query("select id,data->>'fullName' as \"fullName\",data->>'employeeCode' as \"employeeCode\",data->>'department' as department,data->>'position' as position from private.records where module='employees' order by id");
+  res.json(result.rows);
+}));
+operationsRouter.post('/incidents/confirm',asyncRoute(async(req,res)=>{
+  res.json(await confirmIncidents(req.user,req.body.items,req.body.source_job_id));
+}));
+operationsRouter.post('/incidents/discard',asyncRoute(async(req,res)=>{
+  res.json(await discardIncidentDrafts(req.user,req.body.ids));
+}));
 operationsRouter.post('/ranking/finalize',asyncRoute(async(req,res)=>{
   res.json(await finalizeRanking(req.user,req.body.record,req.body.employeeIds));
 }));
@@ -48,6 +60,12 @@ operationsRouter.post(
       req.file.mimetype,
       req.file.originalname,
     );
+    // Yard statistics are a transient viewer: never stage the source or enqueue an archive.
+    if (module === 'shipProductivity') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ workbook });
+      return;
+    }
     const id = randomUUID();
     await transaction(async (db) => {
       await db.query(

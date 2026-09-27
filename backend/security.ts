@@ -113,6 +113,10 @@ export function readScope(
   validModule(module);
   if (hasPermission(user, MODULE_PERMISSIONS[module]))
     return { clause: "true", params: [] };
+  if (module === 'incidents') {
+    const visible = !user.visibleTabs?.length || user.visibleTabs.includes('violations');
+    return {clause: user.status==='ACTIVE' && visible ? "data->>'isRtgRelated'='true' and data->>'isSyncedToProfile'='true'" : 'false',params:[]};
+  }
   if (["internalDocuments", "questionFolders", "quizzes"].includes(module))
     return { clause: "true", params: [] };
   if (module === "questionBank") return { clause: "false", params: [] };

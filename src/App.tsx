@@ -149,7 +149,7 @@ export default function App() {
   const unrecordDeletedEmployeeId=useCallback((_id:string)=>{},[]);
   const [incidents,setIncidents]=useState<IncidentViolation[]>([]);
   const [dataLoading,setDataLoading]=useState(false);
-  const handleUpdateIncidents=useCallback(async(items:IncidentViolation[])=>{try{await saveDocumentsBatch('incidents',items.map(data=>({id:data.id,data})));setIncidents(items);}catch(e){addToast('error',(e as Error).message);}},[]);
+  const handleUpdateIncidents=useCallback((items:IncidentViolation[])=>{setIncidents(previous=>[...previous.filter(item=>!items.some(saved=>saved.id===item.id)),...items]);},[]);
   useEffect(()=>{const onError=(e:Event)=>addToast('error',(e as CustomEvent).detail);window.addEventListener('rtg:error',onError);return()=>window.removeEventListener('rtg:error',onError);},[]);
   useEffect(()=>{
     let active=true;
@@ -1635,6 +1635,7 @@ export default function App() {
                 content: 'Nhân viên: ' + incident.violatorName + '\nThời gian: ' + incident.time + '\nĐịa điểm: ' + incident.location + '\nNội dung: ' + incident.what + '\nNguyên nhân: ' + incident.why + '\nXử lý: ' + incident.how,
                 recipientType: 'INDIVIDUAL', recipientIds: incident.matchedEmployeeId ? [incident.matchedEmployeeId] : [], department: incident.matchedDepartment})}
               onUpdateIncidents={handleUpdateIncidents}
+              onDiscardIncidents={ids=>setIncidents(previous=>previous.filter(item=>!ids.includes(item.id)))}
               onUpdateEmployee={handleUpdateEmployee}
               onBatchUpdateEmployees={handleBatchUpdateEmployees}
               onAddEmployee={handleAddEmployee}
