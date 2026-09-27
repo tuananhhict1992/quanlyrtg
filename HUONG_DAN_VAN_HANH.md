@@ -244,3 +244,6 @@ Google OAuth đã chuyển sang In production ngày 26/09/2026 theo xác nhận 
     Khi báo lỗi, gửi thao tác, thời điểm, thông báo lỗi và job ID nếu có; che token, mật khẩu, khóa và thông tin cá nhân không cần thiết.
 
 Chi tiết phạm vi kiểm chứng và giới hạn hiện tại: [PRODUCTION_CHECK.md](PRODUCTION_CHECK.md).
+# Thông báo Zalo — cập nhật 27/09/2026
+
+Website chính thức đã có trung tâm **Thông báo Zalo** cho cá nhân/Ca/tập thể, nối với vi phạm, giao bài và phép. Quy trình tạo OA, liên kết UID, Preview/Confirm và xử lý lỗi nằm trong [HUONG_DAN_ZALO.md](HUONG_DAN_ZALO.md). Hiện chưa cấu hình OA nên chưa gửi tin thật. Bản Cloud Run đã kiểm tra: `quanlyrtg-00005-bvc` (27/09/2026), 100% lưu lượng.

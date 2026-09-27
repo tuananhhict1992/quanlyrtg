@@ -62,6 +62,7 @@ Build còn cảnh báo chunk JavaScript trên 500 kB (entry và module thi). Mod
 Mẫu import Google mới sử dụng snapshot báo cáo của RTG. Tệp Sheets cũ theo cột vẫn có thể xuất XLSX rồi dùng parser Excel cũ; cần đối chiếu bản xem trước trước khi nhập. Không dùng Sheets làm nguồn dữ liệu đọc thường xuyên cho ứng dụng.
 # Cập nhật thông báo Zalo — 27/09/2026
 
+- Đã triển khai Cloud Run revision `quanlyrtg-00005-bvc`, tạo lúc 09:45:20 (UTC+7) ngày 27/09/2026 và nhận 100% lưu lượng. AI Studio có báo lỗi RPC/mất phản hồi trong Publish, nhưng đã đối chiếu Cloud Run và website thật: nhãn Zalo mới, API nhật ký và cấu hình OA tải thành công, không có lỗi console trong kiểm tra này. Chưa có OA, chưa gửi tin thật.
 - Thay màn hình soạn thông báo nội bộ bằng Zalo OA: nguồn vi phạm, giao bài, phép; chọn cá nhân/Ca/tập thể, nội dung và Preview trước Confirm. Giữ lịch sử nội bộ và giao bài cũ.
 - 26/26 kiểm thử backend đạt; ca 76 người nhận được tách đúng UID, retry không gửi lại success/unknown. Typecheck, build, migration cục bộ và các kiểm thử giao diện 390/768/1366/1920px đạt. Test nút giao bài đã cập nhật theo nhãn “Giao bài & soạn Zalo” và chạy lại thành công.
 - Migration `20260927021032_zalo_notifications.sql` đã áp dụng vào `utcpdfiyaqnimdasttak`, SHA-256 `105e45810a0dc8847c2482c59b7f6e209a735fef2ca09a3b911af1a2d01ab133`. Ba bảng private bật RLS, không cho anon/authenticated SELECT. Không có thông báo thật được tạo khi kiểm thử.
