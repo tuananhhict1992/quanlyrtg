@@ -615,8 +615,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <BellRing className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-slate-900 text-sm">Thông Báo Nội Bộ Gần Đây</h3>
-              <p className="text-xs text-slate-500">Phát thông báo cá nhân, theo ca trực và toàn thể cơ quan</p>
+              <h3 className="font-bold text-slate-900 text-sm">Lịch sử thông báo trong ứng dụng</h3>
+              <p className="text-xs text-slate-500">Soạn thông báo Zalo cá nhân, theo Ca hoặc tập thể tại trung tâm thông báo</p>
             </div>
           </div>
           <button
