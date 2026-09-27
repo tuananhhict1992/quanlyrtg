@@ -159,7 +159,7 @@ test('Google queue hides successes and automatically removes newly completed job
   await expect(page.getByText('hidden-completed · sheet')).toHaveCount(0);
   await expect(page.getByText('waiting-employee · sheet')).toBeVisible();
   const before=reads;complete=true;
-  await expect.poll(()=>reads,{timeout:15000}).toBeGreaterThan(before);
+  await expect.poll(()=>reads,{timeout:20000}).toBeGreaterThan(before);
   await expect(page.getByText(/Không có tác vụ cần xử lý/)).toBeVisible();
   await expect(page.getByRole('button',{name:'Xử lý hàng đợi',exact:true})).toHaveCount(0);
 });
@@ -250,6 +250,56 @@ async function authenticated(page: any, includeArchive = false, profile: any = a
     await route.fulfill({ json: body });
   });
 }
+test('One active user can focus repeatedly without request storms; temporary profile errors keep the session',async({page})=>{
+  await page.setViewportSize({width:1366,height:900});
+  await authenticated(page);
+  const bus=await realtimeBus(page);
+  let profileReads=0,sessionWrites=0,recordReads=0,failProfile=false;
+  page.on('request',req=>{const path=new URL(req.url()).pathname;if(path==='/api/session')sessionWrites++;if(path.startsWith('/api/records/'))recordReads++;});
+  await page.route('**/api/me',route=>{
+    profileReads++;
+    return failProfile ? route.fulfill({status:503,json:{error:'Tạm thời bận'}}) : route.fulfill({json:admin});
+  });
+  await page.goto('/');
+  await expect(page.getByTestId('nav-dashboard')).toBeVisible();
+  await expect.poll(()=>bus.count('settings')).toBe(1);
+  await expect.poll(()=>recordReads).toBeGreaterThanOrEqual(12);
+  await page.waitForTimeout(3500);
+  const before={profileReads,recordReads,sessionWrites};
+  for(let i=0;i<10;i++){
+    await page.evaluate(()=>{for(let j=0;j<10;j++)window.dispatchEvent(new Event('focus'));});
+    await page.waitForTimeout(200);
+  }
+  expect(profileReads-before.profileReads).toBeLessThanOrEqual(1);
+  expect(recordReads-before.recordReads).toBe(0);
+  expect(sessionWrites-before.sessionWrites).toBe(0);
+  failProfile=true;
+  // A temporary failure on a profile refresh must not render the login screen.
+  await page.clock.install();await page.clock.fastForward(31000);
+  const previous=profileReads;
+  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  await expect.poll(()=>profileReads).toBeGreaterThan(previous);
+  await expect(page.getByTestId('nav-dashboard')).toBeVisible();
+  await expect(page.getByRole('button',{name:'Đăng nhập hệ thống',exact:true})).toHaveCount(0);
+});
+
+test('Realtime read 429 retains visible data and recovers after Retry-After',async({page})=>{
+  await page.setViewportSize({width:1366,height:900});
+  await authenticated(page);
+  const bus=await realtimeBus(page);
+  let limited=false,failures=0,title='Nội dung trước giới hạn';
+  await page.route('**/api/records/settings?*',route=>{
+    if(limited && failures++===0)return route.fulfill({status:429,headers:{'Retry-After':'1'},json:{error:'Tài khoản gửi quá nhiều yêu cầu. Vui lòng thử lại sau một phút.'}});
+    return route.fulfill({json:{items:[{id:'global',announcementTitle:title}],nextCursor:null}});
+  });
+  await page.goto('/');await expect(page.getByText(title,{exact:true})).toBeVisible();
+  await expect.poll(()=>bus.count('settings')).toBe(1);
+  limited=true;title='Dữ liệu đã tự khôi phục';bus.emit('settings');
+  await expect(page.getByText(/Đang tạm giãn tải dữ liệu/)).toBeVisible({timeout:10000});
+  await expect(page.getByTestId('nav-dashboard')).toBeVisible();
+  await expect(page.getByText(title,{exact:true})).toBeVisible({timeout:10000});
+  await expect(page.getByRole('button',{name:'Đăng nhập hệ thống',exact:true})).toHaveCount(0);
+});
 for (const width of [390, 768, 1366, 1920]) {
   test(`login and authenticated modules at ${width}px`, async ({ page }) => {
     const errors: string[] = [];

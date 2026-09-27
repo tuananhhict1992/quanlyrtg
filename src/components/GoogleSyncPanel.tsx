@@ -20,13 +20,14 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
   useEffect(() => {
     if (!allowed) return;
     let active = true, fetching = false;
+    const cancelled = new AbortController();
     setLoading(true);
     const fetchState = async () => {
-      if (fetching) return;
+      if (fetching || !active || document.visibilityState === 'hidden') return;
       fetching = true;
       try {
         const [items, connected, automatic] = await Promise.all([
-          api<any[]>('/google/jobs?page=' + page), api('/google/connection'), api('/google/automation'),
+          api<any[]>('/google/jobs?page=' + page,{signal:cancelled.signal}), api('/google/connection',{signal:cancelled.signal}), api('/google/automation',{signal:cancelled.signal}),
         ]);
         if (!active) return;
         const unfinished = items.filter(item => item.status !== 'success');
@@ -40,8 +41,8 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
       }
     };
     void fetchState();
-    const timer = setInterval(fetchState, 10000);
-    return () => { active = false; clearInterval(timer); };
+    const timer = setInterval(fetchState, 15000);
+    return () => { active = false; cancelled.abort(); clearInterval(timer); };
   }, [page, allowed, refresh]);
   if (!allowed) return null;
   const act = async (fn: () => Promise<any>, message: string) => {

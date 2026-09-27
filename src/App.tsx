@@ -151,18 +151,42 @@ export default function App() {
   const [dataLoading,setDataLoading]=useState(false);
   const handleUpdateIncidents=useCallback((items:IncidentViolation[])=>{setIncidents(previous=>[...previous.filter(item=>!items.some(saved=>saved.id===item.id)),...items]);},[]);
   useEffect(()=>{const onError=(e:Event)=>addToast('error',(e as CustomEvent).detail);window.addEventListener('rtg:error',onError);return()=>window.removeEventListener('rtg:error',onError);},[]);
+  useEffect(()=>{const onInfo=(e:Event)=>addToast('info',(e as CustomEvent).detail,8000);window.addEventListener('rtg:info',onInfo);return()=>window.removeEventListener('rtg:info',onInfo);},[]);
   useEffect(()=>{
     let active=true;
-    const load=async(user:AuthUser|null)=>{try{if(!user){if(active){setCurrentUser(null);setEmployees([]);setFeedbacks([]);setSubmissions([]);setQuizzes([]);setQuestionBank([]);setDocuments([]);setIncidents([]);setLeaveRequests([]);setZaloMessages([]);setBxxlRecords([]);setAppSettings(null);}return;}const profile=await api<Employee>('/me');if(active){setCurrentUser(profile);setAuthError(null);}await api('/session',{method:'POST'});}catch(e){if(active){setCurrentUser(null);setAuthError((e as Error).message);}}finally{if(active)setAuthInitialized(true);}};
-    void supabase.auth.getSession().then(({data})=>load(data.session?.user||null));
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{setTimeout(()=>{if(active)void load(session?.user||null);},0);});
+    let loadedSession: string | null = null, loadingSession: string | null = null, version=0;
+    const load=async(user:AuthUser|null,token?:string)=>{
+      const sessionKey=user ? token || user.id : null;
+      if(user && (loadedSession===sessionKey || loadingSession===sessionKey))return;
+      const current=++version;
+      loadingSession=sessionKey;
+      try {
+        if(!user){loadedSession=null;if(active){setCurrentUser(null);setEmployees([]);setFeedbacks([]);setSubmissions([]);setQuizzes([]);setQuestionBank([]);setDocuments([]);setIncidents([]);setLeaveRequests([]);setZaloMessages([]);setBxxlRecords([]);setAppSettings(null);}return;}
+        const profile=await api<Employee>('/me');
+        if(!active || current!==version)return;
+        loadedSession=sessionKey;setCurrentUser(profile);setAuthError(null);
+        // A repeated SIGNED_IN event on window focus is not a new login.
+        try {await api('/session',{method:'POST'});} catch(e) {if(active)addToast('info','Chưa ghi nhận được phiên đăng nhập. Dữ liệu vẫn đang hiển thị.');}
+      } catch(e:any){if(active && current===version){if(e.status===401 || e.status===403)setCurrentUser(null);setAuthError(e.message);}}
+      finally{if(current===version){loadingSession=null;if(active)setAuthInitialized(true);}}
+    };
+    void supabase.auth.getSession().then(({data})=>load(data.session?.user||null,data.session?.access_token));
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{setTimeout(()=>{if(active)void load(session?.user||null,session?.access_token);},0);});
     return()=>{active=false;subscription.unsubscribe();};
   },[]);
   const dataAccessKey = JSON.stringify(currentUser && [currentUser.role,currentUser.status,currentUser.department,currentUser.assignedPermissions,currentUser.visibleTabs,currentUser.managedDepartments]);
   useEffect(()=>{
     if(!currentUser || currentUser.requiresCredentialChange)return;
     let active = true;
-    const refresh=()=>api<Employee>('/me').then(profile=>{if(active)setCurrentUser(profile);}).catch(e=>{if(active){setCurrentUser(null);setAuthError(e.message);}});
+    const cancelled = new AbortController();
+    let refreshing=false,lastProfileRead=0;
+    const refresh=async()=>{
+      if(refreshing || Date.now()-lastProfileRead<30000 || document.visibilityState==='hidden')return;
+      refreshing=true;lastProfileRead=Date.now();
+      try{const profile=await api<Employee>('/me',{signal:cancelled.signal});if(active)setCurrentUser(profile);}
+      catch(e:any){if(active && (e.status===401 || e.status===403)){setCurrentUser(null);setAuthError(e.message);}}
+      finally{refreshing=false;}
+    };
     setDataLoading(true);
     const sources:[string,(data:any[])=>void][]=[['employees',setEmployees],['internalDocuments',setDocuments],['questionFolders',setQuestionFolders],['questionBank',setQuestionBank],['quizzes',setQuizzes],['quizSubmissions',setSubmissions],['feedbacks',setFeedbacks],['zaloMessages',setZaloMessages],['bxxlRecords',setBxxlRecords],['leaveRequests',setLeaveRequests],['incidents',setIncidents]];
     let count=0;const done=()=>{if(++count>=sources.length)setDataLoading(false);};
@@ -175,7 +199,7 @@ export default function App() {
     },()=>{done();if(module==='employees')void refresh();}));
     unsubs.push(subscribeToDocument<AppSettings>('settings','global',setAppSettings));
     const timer=setInterval(refresh,60000);window.addEventListener('focus',refresh);
-    return()=>{active=false;unsubs.forEach(fn=>fn());clearInterval(timer);window.removeEventListener('focus',refresh);};
+    return()=>{active=false;cancelled.abort();unsubs.forEach(fn=>fn());clearInterval(timer);window.removeEventListener('focus',refresh);};
   },[currentUser?.id, currentUser?.requiresCredentialChange, dataAccessKey]);
   useEffect(()=>{if(currentUser&&!isTabAllowed(activeTab as TabType,currentUser))setActiveTab(getFirstAllowedTab(currentUser));},[currentUser,activeTab]);
 

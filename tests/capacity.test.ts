@@ -10,7 +10,7 @@ import { verifyAccessToken } from '../backend/auth-verification';
 
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-test('80 Realtime clients use 80 channels, route updates, reconnect and clean up', () => {
+test('80 Realtime clients use 80 channels, route updates, reconnect and clean up', async () => {
   let joined = 0, removed = 0, delivered = 0;
   const connections: { event: (payload: any) => void; status: (status: string) => void }[] = [];
   const unsubscribe: (() => void)[] = [];
@@ -28,9 +28,37 @@ test('80 Realtime clients use 80 channels, route updates, reconnect and clean up
   connections.forEach(c => c.status('SUBSCRIBED'));
   assert.equal(delivered, 80 + 960);
   unsubscribe.forEach(fn => fn());
+  await Promise.resolve();
   assert.equal(removed, 80);
   connections.forEach(c => c.event({ new: { module: '3' } }));
   assert.equal(delivered, 1040, 'unmounted clients must not receive callbacks');
+});
+
+test('permission listener replacement reuses the channel and ignores events after disposal', async () => {
+  const channels: any[] = [];
+  let removed = 0, delivered = 0;
+  const hub = createRealtimeHub({ channel: () => {
+    const next: any = { on: (_event:any, _filter:any, callback:any) => { next.event=callback; return next; },
+      subscribe: (callback:any) => { next.status=callback; return next; } };
+    channels.push(next); return next;
+  }, removeChannel: async () => { removed++; return 'ok'; } } as any);
+  for(let i=0;i<100;i++) hub('employees',()=>delivered++)();
+  const stop=hub('employees',()=>delivered++);
+  await Promise.resolve();
+  assert.equal(channels.length,1);
+  assert.equal(removed,0);
+  channels[0].event({new:{module:'employees'}});
+  assert.equal(delivered,1);
+  stop(); await Promise.resolve();
+  assert.equal(removed,1);
+  const stopNext=hub('employees',()=>delivered++);
+  channels[0].event({new:{module:'employees'}});
+  channels[0].status('SUBSCRIBED');
+  assert.equal(delivered,1,'disposed channels cannot notify new listeners');
+  channels[1].event({new:{module:'employees'}});
+  assert.equal(delivered,2);
+  stopNext(); await Promise.resolve();
+  assert.equal(removed,2);
 });
 
 test('collection reads remain bounded and a failed read releases its slot', async () => {

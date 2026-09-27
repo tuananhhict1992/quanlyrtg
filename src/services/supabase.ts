@@ -2,6 +2,7 @@ import { createClient, type User } from "@supabase/supabase-js";
 import { sourceForModule, clearSource } from "./excelProcessing";
 import { createRequestQueue } from './request-queue';
 import { createRealtimeHub } from './realtime-hub';
+import { createApiBackoff } from './api-backoff';
 export type { User };
 const env = (import.meta as any).env;
 export const configured = !!(
@@ -21,6 +22,7 @@ export const supabase = createClient(
 );
 const collectionRead = createRequestQueue(3);
 const observeChanges = createRealtimeHub(supabase);
+const withApiBackoff = createApiBackoff(() => window.dispatchEvent(new CustomEvent('rtg:info', {detail:'Đang tạm giãn tải dữ liệu. Hệ thống sẽ tự cập nhật lại; bạn không cần đăng nhập lại.'})));
 export async function apiFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
@@ -31,12 +33,15 @@ export async function apiFetch(
   );
   if (target.origin !== location.origin || !target.pathname.startsWith("/api/"))
     throw new Error("Chỉ gửi phiên xác thực đến API của ứng dụng.");
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const headers = new Headers(init.headers);
-  if (session) headers.set("Authorization", `Bearer ${session.access_token}`);
-  const res = await fetch(input, { ...init, headers });
+  const read = (init.method || (input instanceof Request ? input.method : 'GET')).toUpperCase() === 'GET';
+  const res = await withApiBackoff(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = new Headers(init.headers);
+    if (session) headers.set('Authorization', `Bearer ${session.access_token}`);
+    const timeout = read ? AbortSignal.timeout(20000) : undefined;
+    const signal = init.signal && timeout ? AbortSignal.any([init.signal, timeout]) : init.signal || timeout;
+    return fetch(input, { ...init, headers, signal });
+  }, read, init.signal || undefined);
   if (res.status === 401) {
     await supabase.auth.signOut();
     window.dispatchEvent(
@@ -61,7 +66,7 @@ export async function api<T = any>(
     },
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Không thể thực hiện yêu cầu.");
+  if (!res.ok) throw Object.assign(new Error(data.error || "Không thể thực hiện yêu cầu."), {status:res.status});
   return data;
 }
 export async function loginWithUsername(username: string, password: string, signal?: AbortSignal) {
@@ -116,17 +121,19 @@ export async function fetchCollectionPage<T>(
   module: string,
   cursor = "",
   limit = 100,
+  signal?: AbortSignal,
 ) {
   return collectionRead(() => api<{ items: T[]; nextCursor: string | null }>(
     `/records/${module}?limit=${limit}&cursor=${encodeURIComponent(cursor)}`,
-    { signal: AbortSignal.timeout(20000) },
+    { signal },
   ));
 }
-export async function fetchCollectionOnce<T>(module: string): Promise<T[]> {
+export async function fetchCollectionOnce<T>(module: string, signal?: AbortSignal): Promise<T[]> {
   const out: T[] = [];
   let cursor = "";
   do {
-    const page = await fetchCollectionPage<T>(module, cursor, 200);
+    signal?.throwIfAborted();
+    const page = await fetchCollectionPage<T>(module, cursor, 200, signal);
     out.push(...page.items);
     cursor = page.nextCursor || "";
   } while (cursor);
@@ -140,7 +147,9 @@ export function subscribeToCollection<T>(
   let active = true,
     running = false,
     again = false;
-  let timer: ReturnType<typeof setTimeout>;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let lastStarted = 0, lastSuccess = 0;
+  const cancelled = new AbortController();
   const refresh = async () => {
     if (!active) return;
     if (running) {
@@ -148,13 +157,14 @@ export function subscribeToCollection<T>(
       return;
     }
     running = true;
+    lastStarted = Date.now();
     try {
-      const data = await fetchCollectionOnce<T>(module);
-      if (active) onData(data);
+      const data = await fetchCollectionOnce<T>(module, cancelled.signal);
+      if (active) { lastSuccess = Date.now(); onData(data); }
     } catch (e) {
       if (active) {
         onError?.(e as Error);
-        window.dispatchEvent(
+        if ((e as any).status !== 429) window.dispatchEvent(
           new CustomEvent("rtg:error", { detail: (e as Error).message }),
         );
       }
@@ -162,24 +172,24 @@ export function subscribeToCollection<T>(
       running = false;
       if (active && again) {
         again = false;
-        void refresh();
+        schedule();
       }
     }
   };
   const schedule = () => {
-    if (!active) return;
-    clearTimeout(timer);
-    timer = setTimeout(refresh, 150 + Math.random() * 350);
+    if (!active || timer) return;
+    timer = setTimeout(() => {timer=undefined;void refresh();}, Math.max(150 + Math.random() * 350, 3000 - (Date.now() - lastStarted)));
   };
   const unsubscribe = observeChanges(module, schedule);
   schedule();
   // Every account subscribes; bounded fallback also covers a temporarily unavailable WebSocket.
-  const fallbackTimer = setInterval(schedule, (module === 'zaloMessages' ? 30000 : 60000) + Math.random() * 10000);
-  const resume = schedule;
+  const fallbackTimer = setInterval(() => {if(document.visibilityState!=='hidden')schedule();}, (module === 'zaloMessages' ? 30000 : 60000) + Math.random() * 10000);
+  const resume = () => { if (Date.now() - lastSuccess >= 30000) schedule(); };
   window.addEventListener('online',resume);
   window.addEventListener('focus',resume);
   return () => {
     active = false;
+    cancelled.abort();
     clearTimeout(timer);
     clearInterval(fallbackTimer);
     window.removeEventListener('online',resume);
