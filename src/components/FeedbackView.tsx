@@ -401,7 +401,7 @@ export const FeedbackView: React.FC<FeedbackViewProps> = ({
       </div>
 
       {/* Google Sheets Sync Banner - Chỉ người có thẩm quyền quản lý mới nhìn thấy và sử dụng */}
-      {canManageFeedback && (
+      {currentUser.role === 'ADMIN' && (
         <div className="bg-gradient-to-r from-emerald-50/80 via-teal-50/50 to-white p-4 sm:p-5 rounded-2xl border border-emerald-200/80 shadow-xs">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-start sm:items-center gap-3">

@@ -70,6 +70,11 @@ test('username access, Admin-only provisioning/reset, idempotency, first passwor
     assert.equal((await accountStatus(admin,'e1')).must_change_password,false);
     await assert.rejects(() => loginByUsername('nv001','123456',factory),(e:any)=>e.status===401);
     await loginByUsername('nv001','MyNewPassword9',factory);
+    const beforeInitialOnly = updates;
+    await setEmployeePassword(admin,'e1',{...task,job_id:randomUUID()},factory,true);
+    assert.equal(updates,beforeInitialOnly,'bulk initial provisioning must not reset existing password');
+    assert.equal((await accountStatus(admin,'e1')).must_change_password,false);
+    await loginByUsername('nv001','MyNewPassword9',factory);
     denyUpdate=true;
     const failedJob = {...task,job_id:randomUUID(),password:'Temporary987'};
     await assert.rejects(() => setEmployeePassword(admin,'e1',failedJob,factory),(e:any)=>e.status===502 && !e.message.includes('private provider'));

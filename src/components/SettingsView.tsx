@@ -112,7 +112,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </p>
         </div>
 
-        {isAdminOrManager && onNavigateToPermissions && (
+        {currentUser.role === 'ADMIN' && onNavigateToPermissions && (
           <button
             type="button"
             onClick={onNavigateToPermissions}
@@ -126,7 +126,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {/* Admin/Manager Callout Card for Google Sheet */}
-      {isAdminOrManager && onNavigateToPermissions && (
+      {currentUser.role === 'ADMIN' && onNavigateToPermissions && (
         <div className="p-5 bg-gradient-to-r from-emerald-50 via-teal-50 to-white rounded-3xl border border-emerald-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start gap-3.5">
             <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">

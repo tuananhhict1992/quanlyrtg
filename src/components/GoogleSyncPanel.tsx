@@ -10,37 +10,40 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [connection, setConnection] = useState<any>(null),
+    [automation, setAutomation] = useState<any>(null),
+    [refresh, setRefresh] = useState(0),
     [preview, setPreview] = useState<any>(null),
     [module, setModule] = useState("employees"),
     [busy, setBusy] = useState(false);
-  const allowed =
-    currentUser.role === "ADMIN" ||
-    currentUser.assignedPermissions?.includes("MANAGE_PERMISSIONS");
-  const load = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      setJobs(await api("/google/jobs?page=" + page));
-      setConnection(await api("/google/connection"));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const allowed = currentUser.role === 'ADMIN';
+  const load = () => setRefresh(value => value + 1);
   useEffect(() => {
-    if (allowed) void load();
-  }, [page, allowed]);
+    if (!allowed) return;
+    let active = true, fetching = false;
+    setLoading(true);
+    const fetchState = async () => {
+      if (fetching) return;
+      fetching = true;
+      try {
+        const [items, connected, automatic] = await Promise.all([
+          api<any[]>('/google/jobs?page=' + page), api('/google/connection'), api('/google/automation'),
+        ]);
+        if (!active) return;
+        const unfinished = items.filter(item => item.status !== 'success');
+        setJobs(unfinished); setConnection(connected); setAutomation(automatic); setError('');
+        if (!unfinished.length && page > 0) setPage(value => value - 1);
+      } catch (e) {
+        if (active) setError((e as Error).message);
+      } finally {
+        fetching = false;
+        if (active) setLoading(false);
+      }
+    };
+    void fetchState();
+    const timer = setInterval(fetchState, 10000);
+    return () => { active = false; clearInterval(timer); };
+  }, [page, allowed, refresh]);
   if (!allowed) return null;
-  const runQueuedJobs = async () => {
-    for (let count = 0; count < 25; count++) {
-      setNotice(`Đang xử lý hàng đợi Google (${count + 1})… Giữ trang này mở.`);
-      const result = await api<{ processed: boolean }>("/google/process-next", {
-        method: "POST",
-      });
-      if (!result.processed) break;
-    }
-  };
   const act = async (fn: () => Promise<any>, message: string) => {
     setBusy(true);
     setError("");
@@ -61,6 +64,11 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
       aria-label="Google Sync"
     >
       <h3 className="font-bold text-lg">Google Sync · Lưu trữ & báo cáo</h3>
+      <p className="rounded-lg bg-blue-50 text-blue-800 p-3 text-sm" role="status">
+        {automation?.enabled
+          ? 'Đồng bộ tự động mỗi phút, kể cả khi đóng app. Chỉ hiển thị tác vụ đang chờ, đang chạy hoặc cần xử lý lỗi.'
+          : 'Lịch đồng bộ tự động chưa được bật trên máy chủ.'}
+      </p>
       <p className="text-sm text-slate-600">
         Dữ liệu nghiệp vụ được lưu tại PostgreSQL. Google lỗi không làm mất bản
         ghi đã lưu.
@@ -154,8 +162,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
             if (confirm("Đưa dữ liệu hiện tại vào hàng đợi báo cáo?"))
               void act(async () => {
                 await api("/google/sync", { method: "POST", body: "{}" });
-                await runQueuedJobs();
-              }, "Đã chạy đồng bộ. Kiểm tra trạng thái từng tác vụ bên dưới; có thể bấm xử lý tiếp nếu còn pending.");
+              }, "Đã xếp hàng báo cáo. Máy chủ sẽ tự động xử lý.");
           }}
         >
           Đồng bộ báo cáo
@@ -167,23 +174,10 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
             if (confirm("Tạo bản sao lưu dữ liệu lên Drive?"))
               void act(async () => {
                 await api("/operations/backup", { method: "POST" });
-                await runQueuedJobs();
-              }, "Đã chạy sao lưu. Kiểm tra kết quả tác vụ bên dưới.");
+              }, "Đã xếp hàng sao lưu. Máy chủ sẽ tự động xử lý.");
           }}
         >
           Backup
-        </button>
-        <button
-          disabled={busy}
-          className="px-3 py-2 border rounded-lg"
-          onClick={() =>
-            void act(
-              runQueuedJobs,
-              "Đã xử lý một đợt hàng đợi. Kiểm tra trạng thái bên dưới.",
-            )
-          }
-        >
-          Xử lý hàng đợi
         </button>
         <button
           disabled={loading}
@@ -270,7 +264,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
       {loading ? (
         <p role="status">Đang tải hàng đợi…</p>
       ) : jobs.length === 0 ? (
-        <p className="text-slate-500 p-4">Chưa có tác vụ đồng bộ.</p>
+        <p className="text-slate-500 p-4">Không có tác vụ cần xử lý. Các mục đã thành công được ẩn; lịch sử vẫn được lưu.</p>
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {jobs.map((j) => (
@@ -283,9 +277,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
                   className={
                     j.status === "failed"
                       ? "text-red-700"
-                      : j.status === "success"
-                        ? "text-emerald-700"
-                        : "text-amber-700"
+                      : "text-amber-700"
                   }
                 >
                   {j.status}
@@ -298,6 +290,9 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
               {j.last_error && (
                 <p className="text-sm text-red-600 mt-2">{j.last_error}</p>
               )}
+              {j.status === 'failed' && j.next_attempt_at && (
+                <p className="text-xs text-amber-700 mt-2">Tự thử lại lúc {formatDate(j.next_attempt_at, true)}.</p>
+              )}
               {j.status === "failed" && (
                 <button
                   disabled={busy}
@@ -307,8 +302,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
                       await api("/google/jobs/" + j.job_id + "/retry", {
                         method: "POST",
                       });
-                      await runQueuedJobs();
-                    }, "Đã chạy lại hàng đợi. Kiểm tra kết quả bên dưới.")
+                    }, "Đã xếp hàng thử lại. Máy chủ sẽ tự động xử lý.")
                   }
                 >
                   Retry Sync

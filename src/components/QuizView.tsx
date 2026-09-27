@@ -1016,7 +1016,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
               </span>
 
               {/* Google Sheet Sync Button */}
-              <button
+              {currentUser.role === 'ADMIN' && <button
                 type="button"
                 onClick={handleSyncQuizzesToSheet}
                 disabled={isSyncingQuizSheet}
@@ -1025,7 +1025,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
                 <span>{isSyncingQuizSheet ? 'Đang đồng bộ...' : 'Đồng bộ Google Sheet'}</span>
-              </button>
+              </button>}
             </div>
           </div>
 

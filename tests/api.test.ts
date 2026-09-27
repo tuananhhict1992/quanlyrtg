@@ -21,6 +21,7 @@ test("health is public, all business, Google and AI APIs require authentication"
     "/api/operations/backup",
     "/api/admin/accounts/e1/password",
     "/api/account/password",
+    "/api/internal/worker",
   ])
     assert.equal((await request(app).post(path).send({})).status, 401);
   const health = await request(app).get("/api/health");

@@ -11,6 +11,7 @@ import { internalNotificationsRouter } from "./backend/internal-notifications";
 import { examsRouter } from "./backend/exams";
 import { operationsRouter } from "./backend/operations";
 import { startWorker } from "./backend/worker";
+import { runAutomaticWorker } from "./backend/automatic-worker";
 import { assertPermission } from "./backend/security";
 import { HttpError, asyncRoute } from "./backend/db";
 import express, { Request, Response } from "express";
@@ -68,6 +69,10 @@ app.use(
   }),
 );
 app.get("/api/google/oauth/callback", asyncRoute(finishGoogleOAuth));
+app.post('/api/internal/worker', express.json({limit:'1kb'}), asyncRoute(async (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.json(await runAutomaticWorker(req.headers.authorization));
+}));
 app.use('/api/auth', publicAccountsRouter);
 app.use("/api", requireAuth);
 const PORT = Number(process.env.PORT) || 3000;

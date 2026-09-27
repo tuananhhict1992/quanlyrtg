@@ -16,6 +16,7 @@ import {
 } from "./google-connection";
 import { startGoogleOAuth } from "./google-oauth";
 import { processNextJob } from "./worker";
+import { listUnfinishedSyncJobs } from './automatic-worker';
 import {
   assertPermission,
   checksum,
@@ -108,18 +109,19 @@ googleRouter.post(
   }),
 );
 googleRouter.get(
+  '/automation',
+  asyncRoute(async (req,res) => {
+    assertPermission(req.user, 'MANAGE_PERMISSIONS');
+    const config = (await pool.query('select enabled from private.worker_config where singleton')).rows[0];
+    const latest = (await pool.query('select created_at,finished_at,status from private.worker_dispatches order by created_at desc limit 1')).rows[0] || null;
+    res.json({enabled: !!config?.enabled, intervalSeconds:60, latest});
+  }),
+);
+googleRouter.get(
   "/jobs",
   asyncRoute(async (req, res) => {
     assertPermission(req.user, "MANAGE_PERMISSIONS");
-    const page = Math.max(0, Number(req.query.page) || 0);
-    res.json(
-      (
-        await pool.query(
-          "select job_id,kind,module,record_id,status,attempts,last_error,created_at from private.sync_queue order by sequence desc limit 50 offset $1",
-          [page * 50],
-        )
-      ).rows,
-    );
+    res.json(await listUnfinishedSyncJobs(req.query.page));
   }),
 );
 googleRouter.post(
@@ -128,7 +130,7 @@ googleRouter.post(
     assertPermission(req.user, "MANAGE_PERMISSIONS");
     await transaction(async (db) => {
       const result = await db.query(
-        "update private.sync_queue set status='pending',last_error=null,updated_at=now() where job_id=$1 and status='failed' returning job_id",
+        "update private.sync_queue set status='pending',retry_count=0,next_attempt_at=null,last_error=null,updated_at=now() where job_id=$1 and status='failed' returning job_id",
         [req.params.id],
       );
       if (!result.rowCount)

@@ -24,6 +24,80 @@ const admin = {
   joinDate: "2026-01-01",
 };
 
+async function realtimeBus(page:any) {
+  const channels = new Map<string,{socket:any,joinRef:string,id:number,module:string}>();
+  let nextId=0;
+  await page.routeWebSocket('wss://unconfigured.supabase.co/realtime/v1/websocket*', (socket:any)=>{
+    socket.onMessage((raw:string)=>{
+      const [joinRef,ref,topic,event,payload]=JSON.parse(raw);
+      if(event==='phx_join') {
+        const id=++nextId, filter=payload.config.postgres_changes[0];
+        channels.set(topic,{socket,joinRef,id,module:filter.filter.split('eq.')[1]});
+        socket.send(JSON.stringify([joinRef,ref,topic,'phx_reply',{status:'ok',response:{postgres_changes:[{...filter,id}]}}]));
+      } else if(event==='phx_leave') {
+        channels.delete(topic);
+        socket.send(JSON.stringify([joinRef,ref,topic,'phx_reply',{status:'ok',response:{}}]));
+      } else if(event==='heartbeat') socket.send(JSON.stringify([joinRef,ref,topic,'phx_reply',{status:'ok',response:{}}]));
+    });
+  });
+  return {
+    count:(module:string)=>[...channels.values()].filter(c=>c.module===module).length,
+    emit:(module:string)=>{for(const [topic,c] of channels) if(c.module===module)
+      c.socket.send(JSON.stringify([c.joinRef,null,topic,'postgres_changes',{ids:[c.id],data:{schema:'public',table:'record_changes',type:'INSERT',commit_timestamp:new Date().toISOString(),columns:[{name:'id',type:'int8'},{name:'module',type:'text'}],record:{id:Date.now(),module},old_record:{},errors:null}}]));},
+  };
+}
+
+for (const role of ['ADMIN','MANAGER_L1','USER']) test(`Realtime updates settings and menu permissions without reload for ${role}`,async({page})=>{
+  await page.setViewportSize({width:1366,height:900});
+  let profile={...admin,role,visibleTabs:['settings'],assignedPermissions:[]};
+  let announcement='Thông báo trước cập nhật';
+  await authenticated(page,false,profile);
+  const bus=await realtimeBus(page);
+  await page.route('**/api/me',route=>route.fulfill({json:profile}));
+  await page.route('**/api/records/employees?*',route=>route.fulfill({json:{items:[profile],nextCursor:null}}));
+  await page.route('**/api/records/settings?*',route=>route.fulfill({json:{items:[{id:'global',announcementTitle:announcement,announcementContent:'Nội dung dùng để kiểm tra Realtime'}],nextCursor:null}}));
+  await page.goto('/');
+  await expect.poll(()=>bus.count('employees')).toBe(1);
+  if(role!=='ADMIN') await expect(page.getByTestId('nav-dashboard')).toHaveCount(0);
+  profile={...profile,visibleTabs:['dashboard','settings','feedback','quiz']};
+  bus.emit('employees');
+  await expect(page.getByTestId('nav-dashboard')).toBeVisible();
+  await page.getByTestId('nav-dashboard').click();
+  await expect(page.getByText(announcement,{exact:true})).toBeVisible();
+  announcement='Thông báo Realtime mới';
+  bus.emit('settings');
+  await expect(page.getByText(announcement,{exact:true})).toBeVisible();
+  if(role!=='ADMIN') {
+    await expect(page.getByRole('button',{name:'Đẩy dữ liệu ngay'})).toHaveCount(0);
+    await page.getByTestId('nav-settings').click();
+    await expect(page.getByText('Đồng Bộ Google Sheet & Cấp Quyền',{exact:true})).toHaveCount(0);
+    profile={...profile,visibleTabs:['settings']};
+    bus.emit('employees');
+    await expect(page.getByTestId('nav-dashboard')).toHaveCount(0);
+  }
+  await expect.poll(()=>bus.count('employees')).toBe(1);
+});
+
+test('Google queue hides successes and automatically removes newly completed jobs',async({page})=>{
+  await authenticated(page);
+  let complete=false,reads=0;
+  await page.route('**/api/google/automation',route=>route.fulfill({json:{enabled:true}}));
+  await page.route('**/api/google/jobs?*',route=>{
+    reads++;
+    return route.fulfill({json:[{job_id:'complete',module:'hidden-completed',kind:'sheet',status:'success',created_at:new Date().toISOString()},
+      ...(!complete?[{job_id:'waiting',module:'waiting-employee',kind:'sheet',status:'pending',created_at:new Date().toISOString()}]:[])]});
+  });
+  await page.goto('/');
+  await page.getByTestId('nav-permissions').click();
+  await expect(page.getByText(/Đồng bộ tự động mỗi phút/)).toBeVisible();
+  await expect(page.getByText('hidden-completed · sheet')).toHaveCount(0);
+  await expect(page.getByText('waiting-employee · sheet')).toBeVisible();
+  const before=reads;complete=true;
+  await expect.poll(()=>reads,{timeout:15000}).toBeGreaterThan(before);
+  await expect(page.getByText(/Không có tác vụ cần xử lý/)).toBeVisible();
+  await expect(page.getByRole('button',{name:'Xử lý hàng đợi',exact:true})).toHaveCount(0);
+});
+
 test('Original HICT logo renders when the deployment omits binary public assets', async ({page}) => {
   await page.route('**/brand/hict-logo.png', route => route.fulfill({status:404,body:'Not found'}));
   await page.goto('/');

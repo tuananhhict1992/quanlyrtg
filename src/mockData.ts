@@ -717,8 +717,7 @@ export const ALL_MODULE_TABS: ModuleTabConfig[] = [
     label: 'Tổng quan & Thống kê',
     sublabel: 'Báo cáo số liệu quản trị',
     category: 'MANAGEMENT',
-    description: 'Bảng điều khiển KPI, điểm năng lực nhân sự và tiến độ toàn công ty.',
-    requiresPermission: 'VIEW_ANALYTICS',
+    description: 'Thông báo, truy cập nhanh và tổng quan dữ liệu trong phạm vi được cấp quyền.',
   },
   {
     id: 'hr',

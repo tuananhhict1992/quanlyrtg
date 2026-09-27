@@ -73,7 +73,7 @@ export async function accountStatus(actor: any, id: string, authUserId?: string)
   return { ...row, configured: accountAdminConfigured() };
 }
 
-export async function setEmployeePassword(actor: any, id: string, body: any, clientFactory = authClient) {
+export async function setEmployeePassword(actor: any, id: string, body: any, clientFactory = authClient, initialOnly = false) {
   assertAccountAdmin(actor);
   const password = validateNewPassword(body?.password, true);
   const expectedUsername = validateUsername(body?.username);
@@ -98,6 +98,10 @@ export async function setEmployeePassword(actor: any, id: string, body: any, cli
       if (validateUsername(employee.username) !== expectedUsername) throw new HttpError(409, 'Hãy lưu tên đăng nhập trong hồ sơ trước khi cấp hoặc đổi mật khẩu.');
       await db.query("update private.account_jobs set status='processing',updated_at=now() where job_id=$1", [job]);
       const linked = (await db.query('select auth_user_id from private.accounts where employee_id=$1', [id])).rows[0];
+      if (initialOnly && linked) {
+        await db.query("update private.account_jobs set status='success',updated_at=now() where job_id=$1", [job]);
+        return { success: true, alreadyCompleted: true };
+      }
       let authId = linked?.auth_user_id;
       if (!authId) {
         // Synthetic address is an internal Supabase identifier, never a delivery address or HR email.

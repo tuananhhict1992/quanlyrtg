@@ -5,7 +5,7 @@ import { DEFAULT_VISIBLE_TABS_BY_ROLE } from '../mockData';
  * Bảng ánh xạ quyền nghiệp vụ tối thiểu bắt buộc đối với từng phân hệ
  */
 export const TAB_REQUIRED_PERMISSIONS: Partial<Record<TabType, PermissionKey>> = {
-  dashboard: 'VIEW_ANALYTICS',
+  // Dashboard visibility is granted by visibleTabs; data remains scoped by the API.
   hr: 'MANAGE_HR',
   bxxl: 'MANAGE_BXXL',
   zalo: 'MANAGE_ZALO',

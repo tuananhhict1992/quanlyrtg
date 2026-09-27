@@ -1835,7 +1835,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
             {/* Danh sách các tác vụ tiện ích */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-4">
               {/* 1. Đồng Bộ Data_RTG (Sheet TheoDoiViPham) */}
-              <button
+              {currentUser?.role === 'ADMIN' && <button
                 type="button"
                 onClick={() => {
                   setIsActionHubOpen(false);
@@ -1860,7 +1860,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                     Gửi toàn bộ danh sách vụ việc Tổ RTG lên sheet TheoDoiViPham của file Data_RTG.
                   </p>
                 </div>
-              </button>
+              </button>}
 
               {/* 2. Đọc lại từ Sheet TheoDoiViPham */}
               <button
@@ -2020,7 +2020,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
               </button>
 
               {/* 8. Webhook Google Apps Script */}
-              <button
+              {currentUser?.role === 'ADMIN' && <button
                 type="button"
                 onClick={() => {
                   setIsActionHubOpen(false);
@@ -2045,7 +2045,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                     Đưa dữ liệu vi phạm đã lưu vào hàng đợi báo cáo; theo dõi kết quả tại Google Sync.
                   </p>
                 </div>
-              </button>
+              </button>}
 
               {/* 7. Xóa Toàn Bộ Danh Sách Vụ Việc */}
               <button

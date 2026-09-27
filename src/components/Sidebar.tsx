@@ -79,7 +79,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Tổng quan & Thống kê',
       sublabel: 'Báo cáo số liệu quản trị',
       icon: LayoutDashboard,
-      requiresPermission: 'VIEW_ANALYTICS',
     },
     {
       id: 'hr',

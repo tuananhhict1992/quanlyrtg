@@ -172,14 +172,25 @@ export function subscribeToCollection<T>(
         timer = setTimeout(refresh, 150);
       },
     )
-    .subscribe();
+    .subscribe(status => {
+      // Re-fetch on initial connection and reconnection to recover changes missed offline.
+      if (status === 'SUBSCRIBED' && active) {
+        clearTimeout(timer);
+        timer = setTimeout(refresh, 150);
+      }
+    });
   void refresh();
-  // Internal schedules also dispatch on reads, including when Cloud Run's background worker is off.
-  const inboxTimer = module === 'zaloMessages' ? setInterval(refresh, 30000) : undefined;
+  // Every account subscribes; bounded fallback also covers a temporarily unavailable WebSocket.
+  const fallbackTimer = setInterval(refresh, module === 'zaloMessages' ? 30000 : 60000);
+  const resume = () => { if(active) void refresh(); };
+  window.addEventListener('online',resume);
+  window.addEventListener('focus',resume);
   return () => {
     active = false;
     clearTimeout(timer);
-    if (inboxTimer) clearInterval(inboxTimer);
+    clearInterval(fallbackTimer);
+    window.removeEventListener('online',resume);
+    window.removeEventListener('focus',resume);
     void supabase.removeChannel(channel);
   };
 }

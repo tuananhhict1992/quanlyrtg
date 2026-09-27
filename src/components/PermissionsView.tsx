@@ -473,7 +473,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
           <Shield className="w-4 h-4" />
           <span>Phân Quyền & Hiển Thị Menu</span>
         </button>
-        <button
+        {currentUser.role === 'ADMIN' && <button
           type="button"
           onClick={() => setViewSection('GOOGLE_SHEETS')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
@@ -484,7 +484,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
         >
           <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
           <span>Đồng Bộ Google Sheet</span>
-        </button>
+        </button>}
         <button
           type="button"
           onClick={() => setViewSection('COMPETENCY')}

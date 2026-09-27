@@ -37,7 +37,7 @@ export async function processNextJob(adapters = services) {
     )
       return false;
     await lock.query(
-      "update private.sync_queue set status='failed',last_error='Worker dừng trước khi xác nhận kết quả',updated_at=now() where status='processing'",
+      "update private.sync_queue set status='failed',last_error='Worker dừng trước khi xác nhận kết quả',next_attempt_at=now()+interval '1 minute',updated_at=now() where status='processing'",
     );
     const job = await transaction(
       async (db) =>
@@ -314,7 +314,7 @@ export async function processNextJob(adapters = services) {
     } catch (e: any) {
       await transaction(async (db) => {
         await db.query(
-          "update private.sync_queue set status='failed',last_error=$2,updated_at=now() where job_id=$1",
+          "update private.sync_queue set status='failed',last_error=$2,next_attempt_at=case when retry_count<3 then now()+interval '1 minute'*power(2,retry_count) else null end,updated_at=now() where job_id=$1",
           [
             job.job_id,
             "Google đồng bộ thất bại; kiểm tra cấu hình, quota và quyền thư mục.",

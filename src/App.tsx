@@ -158,17 +158,25 @@ export default function App() {
     const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{setTimeout(()=>{if(active)void load(session?.user||null);},0);});
     return()=>{active=false;subscription.unsubscribe();};
   },[]);
+  const dataAccessKey = JSON.stringify(currentUser && [currentUser.role,currentUser.status,currentUser.department,currentUser.assignedPermissions,currentUser.visibleTabs,currentUser.managedDepartments]);
   useEffect(()=>{
     if(!currentUser || currentUser.requiresCredentialChange)return;
+    let active = true;
+    const refresh=()=>api<Employee>('/me').then(profile=>{if(active)setCurrentUser(profile);}).catch(e=>{if(active){setCurrentUser(null);setAuthError(e.message);}});
     setDataLoading(true);
     const sources:[string,(data:any[])=>void][]=[['employees',setEmployees],['internalDocuments',setDocuments],['questionFolders',setQuestionFolders],['questionBank',setQuestionBank],['quizzes',setQuizzes],['quizSubmissions',setSubmissions],['feedbacks',setFeedbacks],['zaloMessages',setZaloMessages],['bxxlRecords',setBxxlRecords],['leaveRequests',setLeaveRequests],['incidents',setIncidents]];
     let count=0;const done=()=>{if(++count>=sources.length)setDataLoading(false);};
-    const unsubs=sources.map(([module,set])=>subscribeToCollection(module,items=>{set(items);done();},()=>done()));
+    const unsubs=sources.map(([module,set])=>subscribeToCollection(module,items=>{
+      set(items);done();
+      if(module==='employees') {
+        const own = (items as Employee[]).find(item=>item.id===currentUser.id);
+        if(own) setCurrentUser(previous=>previous ? {...previous,...own} : previous);
+      }
+    },()=>{done();if(module==='employees')void refresh();}));
     unsubs.push(subscribeToDocument<AppSettings>('settings','global',setAppSettings));
-    const refresh=()=>api<Employee>('/me').then(setCurrentUser).catch(e=>{setCurrentUser(null);setAuthError(e.message);});
     const timer=setInterval(refresh,60000);window.addEventListener('focus',refresh);
-    return()=>{unsubs.forEach(fn=>fn());clearInterval(timer);window.removeEventListener('focus',refresh);};
-  },[currentUser?.id, currentUser?.requiresCredentialChange]);
+    return()=>{active=false;unsubs.forEach(fn=>fn());clearInterval(timer);window.removeEventListener('focus',refresh);};
+  },[currentUser?.id, currentUser?.requiresCredentialChange, dataAccessKey]);
   useEffect(()=>{if(currentUser&&!isTabAllowed(activeTab as TabType,currentUser))setActiveTab(getFirstAllowedTab(currentUser));},[currentUser,activeTab]);
 
   // Tổng hợp tất cả các hồ sơ vi phạm của nhân sự hệ thống để đồng bộ Google Sheet & Đánh giá năng lực

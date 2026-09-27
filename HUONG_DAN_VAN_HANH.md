@@ -203,7 +203,13 @@ Google OAuth đã chuyển sang In production ngày 26/09/2026 theo xác nhận 
 
 8. **Bật xử lý hàng đợi**
 
-   **Cloud Run hiện tại:** giữ `RUN_SYNC_WORKER=false`. Trong Google Sync, các nút Đồng bộ báo cáo, Backup và Retry Sync xử lý tối đa 25 tác vụ mỗi lần, tuần tự trong HTTP request. Giữ trang mở trong lúc chạy; bấm **Xử lý hàng đợi** tiếp nếu vẫn còn pending. Cách này tránh phụ thuộc CPU khi Cloud Run không có request. Tác vụ do các module khác xếp hàng cũng được xử lý tại đây. Chưa thiết lập dịch vụ worker chạy liên tục hoặc lịch tự động trên môi trường này.
+   **Cloud Run hiện tại:** giữ `RUN_SYNC_WORKER=false`. Migration `20260927083030_automatic_sync_and_initial_accounts.sql` tạo lịch Supabase Cron mỗi phút gọi worker Node qua `pg_net`. Chỉ bật `private.worker_config.enabled` sau khi triển khai endpoint `/api/internal/worker`. Mỗi lần gọi dùng token ngẫu nhiên dùng một lần, hết hạn sau 5 phút; không cần thêm secret vào AI Studio. Không cần giữ app mở. Lịch chỉ gọi server khi còn việc; Google lỗi được thử lại tối đa 3 lần tự động với khoảng chờ tăng dần. Admin vẫn có Retry Sync.
+
+   Google Sync chỉ hiện tác vụ chưa hoàn thành; `success` được giữ trong DB và SYNC_LOG để đối chiếu. Danh sách tự tải lại mỗi 10 giây. Đồng bộ Google là lưu trữ/báo cáo, độc lập với Realtime trong app.
+
+   Tất cả tài khoản đã đăng nhập và hoàn tất đổi mật khẩu ban đầu đều nhận cập nhật qua Supabase Realtime. Khi mất kết nối, app tải bù lúc nối lại và kiểm tra dự phòng mỗi phút. Quyền/menu mới được áp dụng trong phiên đang mở. Chỉ Admin thấy các nút điều khiển Google Sync; nghiệp vụ vẫn ghi vào PostgreSQL trước.
+
+   Cấp tài khoản ban đầu hàng loạt: quản trị DB đưa nhân sự ACTIVE chưa liên kết Auth vào `private.initial_account_queue` với `actor_id` của Admin đang hoạt động. Worker dùng Supabase Auth Admin, mật khẩu ban đầu `123456`, bắt buộc đổi lần đầu. Không ghi mật khẩu vào queue/hồ sơ/báo cáo. Các tài khoản đã liên kết được bỏ qua ngay dưới khóa DB, kể cả khi có tác vụ chạy đồng thời.
 
    **Máy chủ có CPU chạy liên tục:** đổi `RUN_SYNC_WORKER=true` trong `.env`, khởi động lại server bằng `npm.cmd start` trong terminal có `NODE_ENV=production`. Worker sẽ chạy cùng server.
 
@@ -256,7 +262,7 @@ Google OAuth đã chuyển sang In production ngày 26/09/2026 theo xác nhận 
     | SELF_SIGNED_CERT_IN_CHAIN | File CA có trong bản triển khai, đường dẫn sslrootcert đúng, dùng sslmode=verify-full; không tắt xác minh chứng chỉ |
     | Unsupported provider: provider is not enabled | Dùng email/mật khẩu; nút Google Workspace cần cấu hình Google OAuth riêng |
     | Google 403/404 | API đã bật, OAuth đã cấp quyền drive.file, token còn hiệu lực; nếu dùng service account thì kiểm tra quyền Shared Drive/Spreadsheet |
-    | Queue luôn pending | Trên Cloud Run bấm Xử lý hàng đợi trong Google Sync; với server liên tục kiểm tra worker và kết nối DB |
+    | Queue luôn pending | Kiểm tra private.worker_config.enabled, cron.job_run_details, private.worker_dispatches và kết nối Google; không xem/in token request |
     | Queue failed | Xem lỗi từng job, sửa nguyên nhân, Retry; không xóa dữ liệu nghiệp vụ/file tạm |
     | EADDRINUSE:3000 | Một tiến trình đang dùng cổng 3000; dừng đúng tiến trình app cũ rồi chạy lại |
     | Mở được health nhưng không đăng nhập/lưu được | `/api/health` chỉ xác nhận Node còn chạy, không xác nhận DB/Google |
