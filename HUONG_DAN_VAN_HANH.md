@@ -247,3 +247,5 @@ Chi tiết phạm vi kiểm chứng và giới hạn hiện tại: [PRODUCTION_C
 # Thông báo nội bộ — cập nhật 27/09/2026
 
 Theo yêu cầu, khôi phục hộp thư và chat nhanh; thông báo vi phạm, giao bài, phép gửi vào ứng dụng. Kênh gửi Zalo đã ngừng ở server. Không cần tạo OA. Xem [HUONG_DAN_THONG_BAO_NOI_BO.md](HUONG_DAN_THONG_BAO_NOI_BO.md).
+
+Đã kiểm chứng bản chính thức quanlyrtg-00006-jhp (27/09/2026 10:16:48 UTC+7), 100% lưu lượng. Mở menu **Tin nhắn nội bộ** để soạn hoặc đọc hộp thư; biểu tượng tin nhắn trên cùng mở Chat nhanh.
