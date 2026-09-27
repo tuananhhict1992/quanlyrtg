@@ -69,3 +69,9 @@ Mẫu import Google mới sử dụng snapshot báo cáo của RTG. Tệp Sheets
 - Hẹn giờ được xử lý khi đọc hộp thư và kiểm tra lại mỗi 30 giây; nếu app đóng và worker không chạy, phát khi người dùng mở lại.
 
 Kiểm tra local đạt: typecheck, production build, migrations (14 bảng ứng dụng bật RLS), 26/26 unit/API/database tests và 11/11 kiểm thử Chrome. Các màn hình đăng nhập, quản trị, thông báo chạy ở 390/768/1366/1920px; retry thông báo giữ bản nháp và job ID, giao bài 76 người giữ chống trùng. Build còn cảnh báo kích thước chunk lớn như trước. Đã triển khai Cloud Run revision quanlyrtg-00006-jhp lúc 10:16:48 (UTC+7) ngày 27/09/2026, nhận 100% lưu lượng. Đã mở website chính thức, kiểm tra trung tâm Tin nhắn nội bộ, hộp thư trống và chat nhanh; không có lỗi console trong kiểm tra này, không gửi tin thử cho nhân viên. AI Studio hiển thị thời điểm xuất bản cũ, nên đối chiếu bằng revision Cloud Run và giao diện thực tế.
+
+# UI/UX HICT — 27/09/2026
+
+- Đồng bộ palette, chữ, bán kính, bóng, biểu mẫu, bảng, focus/disabled; dùng logo HICT người dùng cung cấp ở đăng nhập, header và favicon.
+- Cải tiến bố cục dashboard và thông báo nội bộ, menu mobile, avatar lỗi, toast giới hạn chiều rộng. Giữ các callback nghiệp vụ và phân quyền.
+- Typecheck, build và 11/11 kiểm thử Chrome đạt trên bốn kích thước 390/768/1366/1920px. Không có migration mới hoặc thay đổi backend. Xem UI_GUIDE.md.

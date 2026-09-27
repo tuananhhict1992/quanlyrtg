@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { UserAvatar } from './Brand';
 import {
   Users,
   GraduationCap,
@@ -156,236 +157,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const totalViolations = employees.reduce((sum, e) => sum + (e.violationCount || 0), 0);
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner / Welcome & Announcement */}
-      <div 
-        className="rounded-3xl bg-gradient-to-br from-blue-500 to-cyan-400 text-white p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col items-center justify-center text-center"
-        style={{ borderRadius: '10px' }}
-      >
-        <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-64 h-64 bg-cyan-300/20 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="relative z-10 w-full max-w-2xl space-y-6">
-          {/* Announcement Box */}
-          <div 
-            className="backdrop-blur-md flex flex-col gap-3 text-left w-full mx-auto"
-            style={{ 
-              backgroundColor: '#cae4ff',
-              borderColor: '#b30303',
-              borderStyle: 'dashed',
-              borderWidth: '1px',
-              borderRadius: '7px',
-              padding: '16px'
-            }}
-          >
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2" style={{ color: '#fb0707' }}>
-                <BellRing className="w-6 h-6 animate-pulse shrink-0" />
-                <span className="text-xl font-extrabold uppercase tracking-wide">
-                  {announcementTitle}
-                </span>
-              </div>
-              {/* Nút cập nhật thông báo - Quyền chỉnh sửa chỉ dành cho Admin */}
-              {isAdmin && (
-                <button
-                  id="dash-edit-announcement-btn"
-                  type="button"
-                  onClick={() => {
-                    setAnnouncementTitleInput(announcementTitle);
-                    setAnnouncementContentInput(announcementContent);
-                    setIsEditAnnouncementOpen(true);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                  title="Quyền Admin: Chỉnh sửa và cập nhật thông báo"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>Cập nhật thông báo</span>
-                </button>
-              )}
-            </div>
-            <p 
-              className="text-sm leading-relaxed font-medium whitespace-pre-line"
-              style={{ color: '#030202' }}
-            >
-              {announcementContent}
-            </p>
-            {appSettings?.announcementUpdatedAt && (
-              <div className="text-[11px] text-slate-600 font-medium pt-1.5 border-t border-blue-200/60 flex items-center justify-between flex-wrap gap-2">
-                <span>
-                  Cập nhật: {new Date(appSettings.announcementUpdatedAt).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})}
-                </span>
-                {appSettings.announcementUpdatedBy && (
-                  <span>Bởi: {appSettings.announcementUpdatedBy}</span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Lối Tắt Tác Nghiệp & Liên Kết Nhanh */}
-          <div className="w-full max-w-xl sm:max-w-2xl lg:max-w-3xl mx-auto space-y-3">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-xs sm:text-sm font-extrabold tracking-wide uppercase text-white/95 flex items-center gap-2 drop-shadow-xs">
-                <ExternalLink className="w-4 h-4 text-cyan-200" />
-                Lối Tắt Tác Nghiệp & Liên Kết Nhanh
-              </span>
-              {isAdmin && (
-                <button
-                  id="dash-edit-quick-links-btn"
-                  type="button"
-                  onClick={() => {
-                    setSaveLinksSuccess(null);
-                    setIsEditLinksOpen(true);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/25 hover:bg-white/35 text-white text-xs font-bold border border-white/40 shadow-xs transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-                  title="Quyền Admin: Cài đặt đường link mở trang cho các nút"
-                >
-                  <Settings2 className="w-3.5 h-3.5 text-cyan-200" />
-                  <span>Cài đặt liên kết (Admin)</span>
-                </button>
-              )}
-            </div>
-
-            {/* Bố cục cân đối, trực quan:
-                - Mobile: 2 cột (3 hàng x 2 nút + 1 nút toàn chiều rộng phía dưới)
-                - Desktop: 3 cột (2 hàng x 3 nút + 1 nút toàn chiều rộng phía dưới)
-            */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-3.5">
-              {/* 1. Tra Cứu */}
-              <button
-                id="dash-quick-search-btn"
-                type="button"
-                onClick={() => handleOpenQuickLink(appSettings?.traCuuLink, 'Tra Cứu')}
-                className="relative rounded-2xl bg-blue-600/35 hover:bg-blue-600/50 text-white font-bold border border-blue-300/45 backdrop-blur-md shadow-lg transition-all duration-200 flex flex-col items-center justify-center p-4 sm:p-5 min-h-[90px] sm:min-h-[100px] cursor-pointer group hover:scale-[1.03] active:scale-[0.98]"
-                title={appSettings?.traCuuLink ? `Mở: ${appSettings.traCuuLink}` : "Mở đường link Tra Cứu được cài đặt"}
-              >
-                <span className="text-sm sm:text-base font-extrabold text-center leading-tight">Tra Cứu</span>
-                <span className="text-xs text-blue-200/90 font-medium mt-1">Liên kết ngoài</span>
-              </button>
-
-              {/* 2. Thư Viện */}
-              <button
-                id="dash-quick-library-btn"
-                type="button"
-                onClick={() => handleOpenQuickLink(appSettings?.libraryLink || appSettings?.nqQdDriveLink, 'Thư Viện')}
-                className="relative rounded-2xl bg-teal-600/35 hover:bg-teal-600/50 text-white font-bold border border-teal-300/45 backdrop-blur-md shadow-lg transition-all duration-200 flex flex-col items-center justify-center p-4 sm:p-5 min-h-[90px] sm:min-h-[100px] cursor-pointer group hover:scale-[1.03] active:scale-[0.98]"
-                title={appSettings?.libraryLink || appSettings?.nqQdDriveLink ? "Mở Thư Viện tài liệu / NQ-QĐ" : "Mở Thư Viện"}
-              >
-                <span className="text-sm sm:text-base font-extrabold text-center leading-tight">Thư Viện</span>
-                <span className="text-xs text-teal-200/90 font-medium mt-1">NQ - QĐ & Quy trình</span>
-              </button>
-
-              {/* 3. Tình trạng Phương tiện */}
-              <button
-                id="dash-quick-vehicle-btn"
-                type="button"
-                onClick={() => handleOpenQuickLink(appSettings?.vehicleStatusLink, 'Tình trạng Phương tiện')}
-                className="relative rounded-2xl bg-emerald-600/40 hover:bg-emerald-600/55 text-white font-bold border border-emerald-300/45 backdrop-blur-md shadow-lg transition-all duration-200 flex flex-col items-center justify-center p-4 sm:p-5 min-h-[90px] sm:min-h-[100px] cursor-pointer group hover:scale-[1.03] active:scale-[0.98]"
-                title={appSettings?.vehicleStatusLink ? `Mở: ${appSettings.vehicleStatusLink}` : "Mở đường link Tình trạng Phương tiện"}
-              >
-                <span className="text-sm sm:text-base font-extrabold text-center leading-tight">Tình trạng Phương tiện</span>
-                <span className="text-xs text-emerald-200/90 font-medium mt-1">Kỹ thuật cẩu RTG</span>
-              </button>
-
-              {/* 4. Nổ máy/ Thủng nóc */}
-              <button
-                id="dash-quick-engine-roof-btn"
-                type="button"
-                onClick={() => handleOpenQuickLink(appSettings?.engineRoofIncidentLink, 'Nổ máy/ Thủng nóc')}
-                className="relative rounded-2xl bg-amber-600/45 hover:bg-amber-600/60 text-white font-bold border border-amber-300/50 backdrop-blur-md shadow-lg transition-all duration-200 flex flex-col items-center justify-center p-4 sm:p-5 min-h-[90px] sm:min-h-[100px] cursor-pointer group hover:scale-[1.03] active:scale-[0.98]"
-                title={appSettings?.engineRoofIncidentLink ? `Mở: ${appSettings.engineRoofIncidentLink}` : "Mở đường link theo dõi Nổ máy/ Thủng nóc"}
-              >
-                <span className="text-sm sm:text-base font-extrabold text-center leading-tight">Nổ máy/ Thủng nóc</span>
-                <span className="text-xs text-amber-200/90 font-medium mt-1">Sự cố thiết bị & vỏ</span>
-              </button>
-
-              {/* 5. Vi phạm */}
-              <button
-                id="dash-quick-violation-btn"
-                type="button"
-                onClick={() => handleOpenQuickLink(appSettings?.violationReportLink, 'Vi phạm')}
-                className="relative rounded-2xl bg-rose-600/50 hover:bg-rose-600/65 text-white font-bold border border-rose-300/55 backdrop-blur-md shadow-lg transition-all duration-200 flex flex-col items-center justify-center p-4 sm:p-5 min-h-[90px] sm:min-h-[100px] cursor-pointer group hover:scale-[1.03] active:scale-[0.98]"
-                style={{ backgroundColor: '#ff4c16' }}
-                title={appSettings?.violationReportLink ? `Mở: ${appSettings.violationReportLink}` : "Mở đường link theo dõi Vi phạm do Admin cài đặt"}
-              >
-                <span className="text-sm sm:text-base font-extrabold text-center leading-tight">Vi phạm</span>
-                <span className="text-xs text-orange-200 font-medium mt-1">Báo cáo & Theo dõi</span>
-              </button>
-
-              {/* 6. Kiểm tra */}
-              <button
-                id="dash-quick-quiz-btn"
-                type="button"
-                onClick={() => {
-                  if (appSettings?.quizLink && appSettings.quizLink.trim()) {
-                    window.open(appSettings.quizLink.trim(), '_blank', 'noopener,noreferrer');
-                  } else {
-                    setActiveTab('quiz');
-                  }
-                }}
-                className="relative rounded-2xl bg-purple-600/40 hover:bg-purple-600/55 text-white font-bold border border-purple-300/45 backdrop-blur-md shadow-lg transition-all duration-200 flex flex-col items-center justify-center p-4 sm:p-5 min-h-[90px] sm:min-h-[100px] cursor-pointer group hover:scale-[1.03] active:scale-[0.98]"
-                title={appSettings?.quizLink ? "Mở đường link Kiểm tra trực tuyến" : "Vào làm bài kiểm tra năng lực & kiến thức nội bộ"}
-              >
-                <span className="text-sm sm:text-base font-extrabold text-center leading-tight">Kiểm tra</span>
-                <span className="text-xs text-purple-200/90 font-medium mt-1">Đánh giá năng lực</span>
-              </button>
-
-              {/* 7. Thông tin của tôi (Full-width cả 2 cột mobile hoặc 3 cột desktop) */}
-              <button
-                id="dash-quick-userinfo-btn"
-                type="button"
-                onClick={() => setShowUserInfo(true)}
-                className="col-span-2 sm:col-span-3 py-3.5 sm:py-4 px-6 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-bold text-sm sm:text-base border border-white/35 backdrop-blur-md shadow-lg transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer group hover:scale-[1.01] active:scale-[0.99]"
-                title="Xem thông tin cá nhân và hồ sơ nhân sự 360°"
-              >
-                <User className="w-5 h-5 sm:w-6 sm:h-6 group-hover:scale-110 transition-transform" />
-                <span>Thông tin của tôi</span>
-              </button>
-            </div>
-          </div>
-        </div>
+    <div className="space-y-6 hict-dashboard">
+      <div className="hict-page-heading">
+        <div><div className="hict-eyebrow">HICT · Không gian điều hành</div><h1>Tổng quan vận hành</h1><p>Nhân sự, thông báo và công việc hằng ngày của Tổ RTG.</p></div>
+        <div className="hict-date"><Calendar size={15} />{new Intl.DateTimeFormat('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'Asia/Ho_Chi_Minh'}).format(new Date())}</div>
       </div>
-
-      {/* Nút Tổng Admin: Đẩy toàn bộ dữ liệu lên Google Sheet (Data_RTG) */}
-      {isAdmin && onOpenMasterSync && (
-        <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white p-4 sm:p-5 rounded-2xl shadow-lg border border-emerald-500/40 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 text-left">
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0 border border-white/30 shadow-inner">
-              <FileSpreadsheet className="w-6 h-6 text-white" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-extrabold text-sm sm:text-base tracking-tight text-white">
-                  Nút Tổng Admin: Đẩy Toàn Bộ Dữ Liệu Lên Google Sheet (Data_RTG)
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-white/25 text-[10px] font-black tracking-wider uppercase border border-white/30">
-                  6 Sheets Tích Hợp
-                </span>
-              </div>
-              <p className="text-xs text-emerald-100 mt-0.5 line-clamp-1 sm:line-clamp-none">
-                Đồng bộ tự động Danh sách Nhân sự, Vi phạm 5W1H Tổ RTG, Kết quả thi, Sáng kiến, BXXL và Đơn nghỉ phép vào file Google Sheet chuẩn.
-              </p>
-            </div>
-          </div>
-          <button
-            id="dash-admin-master-sync-btn"
-            type="button"
-            onClick={onOpenMasterSync}
-            className="px-5 py-2.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 text-xs sm:text-sm font-extrabold shadow-md transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-            title="Mở cửa sổ Đẩy toàn bộ dữ liệu lên Google Sheet Data_RTG"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Đẩy dữ liệu ngay</span>
-            <ArrowRight className="w-3.5 h-3.5 text-emerald-600" />
-          </button>
-        </div>
-      )}
-
       {/* KPI Highlight Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="hict-metrics">
         {/* Total Employees */}
-        <div
-          onClick={() => setActiveTab('hr')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-indigo-300 transition-all cursor-pointer group"
+        <button type="button" onClick={() => setActiveTab('hr')} className="hict-metric group"
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-slate-500">Tổng số Nhân sự</span>
@@ -395,19 +175,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-extrabold text-slate-900">{totalEmployees}</span>
-            <span className="text-xs font-semibold text-emerald-600">100% Hoạt động</span>
+            <span className="text-xs font-semibold text-emerald-600">{totalEmployees ? Math.round(activeEmployees / totalEmployees * 100) : 0}% hoạt động</span>
           </div>
           <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
             <span>{activeEmployees} chính thức</span>
             <span>•</span>
             <span>{probationEmployees} thử việc</span>
           </div>
-        </div>
+        </button>
 
         {/* Competency Score */}
-        <div
-          onClick={() => setActiveTab('quiz')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-indigo-300 transition-all cursor-pointer group"
+        <button type="button" onClick={() => setActiveTab('quiz')} className="hict-metric group"
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-slate-500">Điểm Năng lực TB</span>
@@ -422,12 +200,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="mt-2 text-xs text-slate-500">
             Tỉ lệ thi đạt: <span className="font-semibold text-slate-800">{quizPassRate}%</span> ({passedSubmissions}/{totalSubmissions} lượt)
           </div>
-        </div>
+        </button>
 
         {/* Internal Messaging Card */}
-        <div
-          onClick={() => setActiveTab('zalo')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-indigo-300 transition-all cursor-pointer group"
+        <button type="button" onClick={() => setActiveTab('zalo')} className="hict-metric group"
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-slate-500">Tin nhắn nội bộ</span>
@@ -442,12 +218,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="mt-2 text-xs text-slate-500">
             Hẹn giờ: <span className="font-semibold text-amber-600">{zaloMessages.filter((m) => m.status === 'SCHEDULED').length} tin</span> • Đã phát: <span className="font-semibold text-emerald-600">{zaloMessages.filter((m) => m.status !== 'SCHEDULED').length}</span>
           </div>
-        </div>
+        </button>
 
         {/* Feedback & Proposals */}
-        <div
-          onClick={() => setActiveTab('feedback')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-indigo-300 transition-all cursor-pointer group"
+        <button type="button" onClick={() => setActiveTab('feedback')} className="hict-metric group"
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-slate-500">Đề xuất & Sáng kiến</span>
@@ -462,8 +236,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="mt-2 text-xs text-slate-500">
             <span className="text-amber-600 font-semibold">{pendingFeedbacks} chờ duyệt</span> • {inReviewFeedbacks} đang xử lý
           </div>
-        </div>
+        </button>
       </div>
+
+      <div className="hict-dashboard-columns">
+        <section className="hict-panel p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+            <h2 className="hict-section-title"><BellRing size={18} />{announcementTitle}</h2>
+            {isAdmin && <button id="dash-edit-announcement-btn" type="button" onClick={() => {setAnnouncementTitleInput(announcementTitle);setAnnouncementContentInput(announcementContent);setIsEditAnnouncementOpen(true);}} className="hict-button hict-button-quiet"><Edit3 size={14} />Cập nhật thông báo</button>}
+          </div>
+          <p className="hict-announcement">{announcementContent}</p>
+          {appSettings?.announcementUpdatedAt && <p className="text-[10px] text-slate-400 mt-4">Cập nhật {new Date(appSettings.announcementUpdatedAt).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})}{appSettings.announcementUpdatedBy ? ' · '+appSettings.announcementUpdatedBy : ''}</p>}
+        </section>
+        <section className="hict-panel p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+            <h2 className="hict-section-title"><ExternalLink size={18} />Truy cập nhanh</h2>
+            {isAdmin && <button id="dash-edit-quick-links-btn" type="button" onClick={() => {setSaveLinksSuccess(null);setIsEditLinksOpen(true);}} className="hict-button hict-button-quiet"><Settings2 size={14} />Cài đặt liên kết (Admin)</button>}
+          </div>
+          <div className="hict-quick-grid">
+            <button id="dash-quick-search-btn" type="button" className="hict-quick-link" onClick={() => handleOpenQuickLink(appSettings?.traCuuLink,'Tra Cứu')}><Search /><strong>Tra cứu</strong><span>Liên kết nội bộ</span></button>
+            <button id="dash-quick-library-btn" type="button" className="hict-quick-link" onClick={() => handleOpenQuickLink(appSettings?.libraryLink || appSettings?.nqQdDriveLink,'Thư Viện')}><BookOpen /><strong>Thư viện</strong><span>Quy chế & tài liệu</span></button>
+            <button id="dash-quick-vehicle-btn" type="button" className="hict-quick-link" onClick={() => handleOpenQuickLink(appSettings?.vehicleStatusLink,'Tình trạng Phương tiện')}><Truck /><strong>Phương tiện</strong><span>Tình trạng kỹ thuật</span></button>
+            <button id="dash-quick-engine-roof-btn" type="button" className="hict-quick-link" onClick={() => handleOpenQuickLink(appSettings?.engineRoofIncidentLink,'Nổ máy/ Thủng nóc')}><Flame /><strong>Nổ máy / Thủng nóc</strong><span>Sự cố thiết bị & vỏ</span></button>
+            <button id="dash-quick-violation-btn" type="button" className="hict-quick-link" onClick={() => handleOpenQuickLink(appSettings?.violationReportLink,'Vi phạm')}><ShieldCheck /><strong>Vi phạm & sự cố</strong><span>Báo cáo & theo dõi</span></button>
+            <button id="dash-quick-quiz-btn" type="button" className="hict-quick-link" onClick={() => {if(appSettings?.quizLink?.trim())window.open(appSettings.quizLink.trim(),'_blank','noopener,noreferrer');else setActiveTab('quiz');}}><GraduationCap /><strong>Kiểm tra</strong><span>Đánh giá năng lực</span></button>
+          </div>
+          <button id="dash-quick-userinfo-btn" type="button" onClick={() => setShowUserInfo(true)} className="hict-button w-full mt-3"><User size={15} />Thông tin của tôi<ArrowRight size={14} className="ml-auto" /></button>
+        </section>
+      </div>
+      {isAdmin && onOpenMasterSync && <section className="hict-report-strip">
+        <div className="flex items-center gap-3"><span className="w-10 h-10 rounded-xl bg-white text-blue-600 flex items-center justify-center shrink-0"><FileSpreadsheet size={20} /></span><div><h2 className="hict-section-title">Báo cáo Google</h2><p>Đồng bộ báo cáo nhân sự, vi phạm, kiểm tra, góp ý, bình xét và nghỉ phép.</p></div></div>
+        <button id="dash-admin-master-sync-btn" type="button" onClick={onOpenMasterSync} className="hict-button"><FileSpreadsheet size={15} />Đẩy dữ liệu ngay<ArrowRight size={14} /></button>
+      </section>}
 
       {/* Analytical Detail Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -678,11 +482,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             
             <div className="p-6 overflow-y-auto">
               <div className="flex flex-col md:flex-row items-start gap-6 mb-8">
-                <img
-                  src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.fullName)}&background=random`}
-                  alt="Avatar"
-                  className="w-24 h-24 rounded-2xl object-cover shadow-sm"
-                />
+                <UserAvatar src={currentUser.avatar} name={currentUser.fullName} className="w-24 h-24" />
                 <div className="flex-1 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>

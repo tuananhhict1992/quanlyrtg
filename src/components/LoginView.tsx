@@ -1,8 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { Employee } from '../types';
-import {loginWithGoogle,loginWithEmail} from '../services/supabase';
-import { LogIn, Shield, Eye, EyeOff, AlertCircle, Loader2, Lock, ShieldCheck } from 'lucide-react';
-import { canUserLogin } from '../utils/permissionUtils';
+import { BrandLogo } from "./Brand";
+import React, { useState, useEffect } from "react";
+import { Employee } from "../types";
+import { loginWithGoogle, loginWithEmail } from "../services/supabase";
+import {
+  LogIn,
+  Shield,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  Loader2,
+  Lock,
+  ShieldCheck,
+} from "lucide-react";
+import { canUserLogin } from "../utils/permissionUtils";
 
 interface LoginViewProps {
   employees: Employee[];
@@ -17,8 +27,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
   authError,
   onClearAuthError,
 }) => {
-  const [usernameOrEmail, setUsernameOrEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [usernameOrEmail, setUsernameOrEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,13 +49,17 @@ export const LoginView: React.FC<LoginViewProps> = ({
       await loginWithGoogle();
       // Auth state listener in App.tsx will automatically verify authorization & permissions
     } catch (err: any) {
-      console.error('Google Sign In error:', err);
-      if (err.code === 'auth/popup-closed-by-user') {
-        setError('Cửa sổ đăng nhập Google đã bị đóng. Vui lòng thử lại.');
-      } else if (err.code === 'auth/popup-blocked') {
-        setError('Trình duyệt đã chặn cửa sổ pop-up. Vui lòng cho phép pop-up trên trang này.');
+      console.error("Google Sign In error:", err);
+      if (err.code === "auth/popup-closed-by-user") {
+        setError("Cửa sổ đăng nhập Google đã bị đóng. Vui lòng thử lại.");
+      } else if (err.code === "auth/popup-blocked") {
+        setError(
+          "Trình duyệt đã chặn cửa sổ pop-up. Vui lòng cho phép pop-up trên trang này.",
+        );
       } else {
-        setError(err.message || 'Không thể đăng nhập bằng Google. Vui lòng thử lại.');
+        setError(
+          err.message || "Không thể đăng nhập bằng Google. Vui lòng thử lại.",
+        );
       }
     } finally {
       setLoading(false);
@@ -58,7 +72,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     const pass = password.trim();
 
     if (!input || !pass) {
-      setError('Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.');
+      setError("Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.");
       return;
     }
 
@@ -66,116 +80,136 @@ export const LoginView: React.FC<LoginViewProps> = ({
     setError(null);
     if (onClearAuthError) onClearAuthError();
 
-    try { await loginWithEmail(input, password); } catch(err:any) { setError(err.message || 'Đăng nhập thất bại.'); } finally {setLoading(false);}
+    try {
+      await loginWithEmail(input, password);
+    } catch (err: any) {
+      setError(err.message || "Đăng nhập thất bại.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8 font-sans selection:bg-indigo-500 selection:text-white">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="w-16 h-16 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-xl shadow-indigo-500/20 border border-indigo-400/20">
-          <Shield className="w-8 h-8 text-white" />
+    <div className="hict-login">
+      <section className="hict-login-story" aria-label="HICT Điều hành RTG">
+        <BrandLogo />
+        <div>
+          <div className="hict-eyebrow" style={{ color: "#80c6e6" }}>
+            HICT · RTG PORTAL
+          </div>
+          <h1>
+            Vận hành đồng bộ.
+            <br />
+            <span>Kết nối đội ngũ.</span>
+          </h1>
+          <p>
+            Không gian làm việc dành cho Tổ RTG. Quản lý nhân sự, theo dõi công
+            việc và cập nhật thông tin trong một hệ thống.
+          </p>
+          <div className="hict-login-features">
+            <span>Nhân sự</span>
+            <span>Vận hành</span>
+            <span>Thông báo nội bộ</span>
+          </div>
         </div>
-        <h2 className="text-center text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-          Hệ Thống Quản Trị & Vận Hành RTG
-        </h2>
-        <p className="mt-2 text-center text-sm text-slate-400">
-          Cổng kiểm soát truy cập phân quyền nội bộ Tổ RTG
-        </p>
-      </div>
-
-      <div className="mt-7 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-slate-800/90 backdrop-blur-md py-7 px-6 shadow-2xl rounded-3xl sm:px-9 border border-slate-700/70">
-          {/* Username & Password Form */}
-          <form className="space-y-4" onSubmit={handleCredentialSignIn}>
+        <footer>
+          <ShieldCheck size={17} />
+          <span>Hệ thống nội bộ · Truy cập theo quyền được cấp</span>
+        </footer>
+      </section>
+      <section className="hict-login-form-area">
+        <div className="hict-login-card">
+          <BrandLogo />
+          <div className="hict-eyebrow">Điều hành RTG</div>
+          <h2>Chào mừng trở lại</h2>
+          <p className="text-sm text-slate-500 leading-relaxed mb-8">
+            Đăng nhập để tiếp tục công việc của bạn.
+          </p>
+          <form className="space-y-5" onSubmit={handleCredentialSignIn}>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+              <label htmlFor="username-or-email" className="block mb-2">
                 Email đăng nhập
+              </label>
+              <input
+                id="username-or-email"
+                name="email"
+                type="email"
+                autoComplete="username"
+                required
+                value={usernameOrEmail}
+                onChange={(e) => {
+                  setUsernameOrEmail(e.target.value);
+                  if (error) setError(null);
+                }}
+                className="hict-login-input"
+                placeholder="email@congty.com"
+              />
+            </div>
+            <div>
+              <label htmlFor="login-password" className="block mb-2">
+                Mật khẩu
               </label>
               <div className="relative">
                 <input
-                  id="username-or-email"
-                  type="email"
-                  required
-                  value={usernameOrEmail}
-                  onChange={(e) => {
-                    setUsernameOrEmail(e.target.value);
-                    if (error) setError(null);
-                  }}
-                  className="w-full px-4 py-3 bg-slate-900/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="Điền tài khoản topx / mã nhân viên"
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                  Mật khẩu
-                </label>
-              </div>
-              <div className="relative">
-                <input
                   id="login-password"
-                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
                     if (error) setError(null);
                   }}
-                  className="w-full px-4 py-3 bg-slate-900/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 pr-10"
-                  placeholder="Nhập mật khẩu"
+                  className="hict-login-input pr-12"
+                  placeholder="Nhập mật khẩu của bạn"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1"
-                  tabIndex={-1}
+                  aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                  className="absolute right-1 top-1 text-slate-400 hover:text-blue-700 p-3 rounded-lg"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
-
             {error && (
-              <div className="bg-rose-950/80 border border-rose-500/70 p-3.5 rounded-2xl flex items-start gap-2.5 animate-fade-in shadow-lg shadow-rose-950/40">
-                <AlertCircle className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
-                <div className="text-xs text-rose-200 leading-relaxed font-medium">
-                  {error}
-                </div>
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 leading-relaxed"
+              >
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                {error}
               </div>
             )}
-
             <button
               id="login-submit-btn"
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] transition-all shadow-lg shadow-indigo-600/30 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 cursor-pointer"
+              className="hict-button hict-button-primary"
             >
               {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 size={17} className="animate-spin" />
               ) : (
-                <LogIn className="w-4 h-4" />
+                <LogIn size={17} />
               )}
               <span>Đăng nhập hệ thống</span>
             </button>
           </form>
-
-          <div className="relative flex py-4 items-center">
-            <div className="flex-grow border-t border-slate-700"></div>
-            <span className="flex-shrink mx-4 text-xs uppercase tracking-wider text-slate-400">
-              Hoặc
+          <div className="flex items-center gap-4 my-5">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span className="text-[11px] text-slate-400">
+              hoặc đăng nhập bằng
             </span>
-            <div className="flex-grow border-t border-slate-700"></div>
+            <span className="h-px flex-1 bg-slate-200" />
           </div>
-
-          {/* Google Sign In */}
           <button
             id="google-signin-btn"
             type="button"
             disabled={loading}
             onClick={handleGoogleSignIn}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-2xl text-xs font-bold text-slate-900 bg-white hover:bg-slate-100 active:scale-[0.99] transition-all shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 cursor-pointer"
+            className="hict-button"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path
@@ -197,17 +231,23 @@ export const LoginView: React.FC<LoginViewProps> = ({
             </svg>
             <span>Đăng nhập với Google</span>
           </button>
-          <p className="mt-4 text-center text-xs text-slate-400">
-            <a href="/privacy" className="underline hover:text-white">Thông tin quyền riêng tư</a>
+          <p className="mt-7 flex items-start gap-2 text-[11px] text-slate-400 leading-relaxed">
+            <Lock size={14} className="shrink-0 mt-0.5" />
+            <span>
+              Chỉ tài khoản được cấp quyền mới có thể truy cập. Liên hệ quản trị
+              viên nếu bạn cần hỗ trợ.
+            </span>
           </p>
-
-          <div className="mt-5 pt-4 border-t border-slate-700/60 flex items-center justify-center gap-2 text-center text-[11px] text-slate-400">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Phân quyền bảo mật RBAC: Chỉ tài khoản được cấp quyền mới được truy cập</span>
-          </div>
+          <p className="mt-6 text-center text-[11px] text-slate-400">
+            <a
+              href="/privacy"
+              className="hover:text-blue-700 underline underline-offset-4"
+            >
+              Thông tin quyền riêng tư
+            </a>
+          </p>
         </div>
-      </div>
+      </section>
     </div>
   );
 };
-

@@ -1,3 +1,4 @@
+import { UserAvatar } from './Brand';
 import {api} from '../services/supabase';
 import {GoogleReportDialog} from './GoogleReportActions';
 import {ArchivedImage} from './ArchivedFile';
@@ -1194,11 +1195,7 @@ export const FeedbackView: React.FC<FeedbackViewProps> = ({
                                 <div className="flex items-center gap-2">
                                   <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-700 overflow-hidden">
                                     {emp.avatar ? (
-                                      <img
-                                        src={emp.avatar}
-                                        alt={emp.fullName}
-                                        className="w-full h-full object-cover"
-                                      />
+                                      <UserAvatar src={emp.avatar} name={emp.fullName} className="w-full h-full object-cover" />
                                     ) : (
                                       emp.fullName.charAt(0)
                                     )}

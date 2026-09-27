@@ -1,3 +1,4 @@
+import { UserAvatar } from './Brand';
 import {GoogleSyncPanel} from './GoogleSyncPanel';
 import React, { useState, useMemo } from 'react';
 import {
@@ -954,11 +955,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
                       : 'hover:bg-slate-50 border-slate-100'
                   }`}
                 >
-                  <img
-                    src={emp.avatar || undefined}
-                    alt={emp.fullName}
-                    className="w-10 h-10 rounded-xl object-cover ring-1 ring-slate-200 shrink-0"
-                  />
+                  <UserAvatar src={emp.avatar} name={emp.fullName} className="w-10 h-10 rounded-xl object-cover ring-1 ring-slate-200 shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-1">
                       <span className="font-bold text-slate-900 text-xs truncate">
@@ -1031,11 +1028,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
               {/* Profile Bar */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200/80">
                 <div className="flex items-center gap-3">
-                  <img
-                    src={selectedEmployee.avatar || undefined}
-                    alt={selectedEmployee.fullName}
-                    className="w-12 h-12 rounded-2xl object-cover ring-2 ring-indigo-500/20"
-                  />
+                  <UserAvatar src={selectedEmployee.avatar} name={selectedEmployee.fullName} className="w-12 h-12 rounded-2xl object-cover ring-2 ring-indigo-500/20" />
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-extrabold text-slate-900 text-base">

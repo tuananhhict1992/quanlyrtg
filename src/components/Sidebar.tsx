@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { BrandLogo, UserAvatar } from './Brand';
 import {
   LayoutDashboard,
   Users,
@@ -83,7 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'hr',
       label: 'Quản lý Nhân sự',
-      sublabel: 'Hồ sơ, phòng ban & Zalo',
+      sublabel: 'Hồ sơ & thông tin nhân sự',
       icon: Users,
       requiresPermission: 'MANAGE_HR',
     },
@@ -185,6 +186,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setMobileMenuOpen(false);
   };
 
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setMobileMenuOpen(false); };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [mobileMenuOpen, setMobileMenuOpen]);
+
   const roleInfo = (currentUser?.role && ROLE_CONFIGS[currentUser.role]) || ROLE_CONFIGS.USER;
 
   return (
@@ -199,20 +207,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 w-72 bg-white border-r border-slate-200 flex flex-col transition-transform duration-200 ease-in-out lg:static lg:translate-x-0 ${
+        id="workspace-navigation" aria-label="Điều hướng chính" data-open={mobileMenuOpen}
+        className={`hict-sidebar fixed top-0 bottom-0 left-0 z-50 w-[272px] bg-white border-r border-slate-200 flex flex-col transition-transform duration-200 ease-in-out lg:static lg:translate-x-0 ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Sidebar Header for Mobile */}
         <div className="p-4 border-b border-slate-100 lg:hidden flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">
-              HR
-            </div>
-            <span className="font-bold text-slate-800 text-sm">Quản Trị Doanh Nghiệp</span>
+            <BrandLogo className="w-24" /><span className="font-bold text-slate-800 text-sm">Điều hành RTG</span>
           </div>
           <button
             onClick={() => setMobileMenuOpen(false)}
+            aria-label="Đóng menu"
             className="p-1.5 text-slate-500 rounded-lg hover:bg-slate-100"
           >
             ✕
@@ -220,13 +227,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* User Card */}
-        <div className="p-4 mx-3 my-3 rounded-2xl bg-gradient-to-b from-slate-50 to-slate-100/80 border border-slate-200/80">
+        <div className="hict-sidebar-profile">
           <div className="flex items-center gap-3">
-            <img
-              src={currentUser.avatar || undefined}
-              alt={currentUser.fullName}
-              className="w-11 h-11 rounded-xl object-cover ring-2 ring-white shadow-xs"
-            />
+            <UserAvatar src={currentUser.avatar} name={currentUser.fullName} className="w-10 h-10" />
             <div className="flex-1 min-w-0">
               <h4 className="text-sm font-bold text-slate-900 truncate">{currentUser.fullName}</h4>
               <p className="text-xs text-slate-500 truncate">{currentUser.department}</p>
@@ -247,7 +250,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Navigation Items */}
         <div className="flex-1 overflow-y-auto px-3 py-1 space-y-1">
           <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-            Các hạng mục chức năng
+            Không gian làm việc
           </div>
           {visibleNavItems.map((item) => {
             const Icon = item.icon;
@@ -259,8 +262,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 key={item.id}
                 data-testid={`nav-${item.id}`}
                 id={`nav-item-${item.id}`}
+                aria-current={isCurrent ? 'page' : undefined}
                 onClick={() => handleSelect(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all ${
+                className={`hict-nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all ${
                   isCurrent
                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200 font-medium'
                     : 'text-slate-700 hover:bg-slate-100'
@@ -324,7 +328,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-3 mx-3 mb-3 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500">
           <div className="flex items-center justify-between text-slate-700 font-semibold mb-1">
             <span>Kênh thông báo nội bộ</span>
-            <span className="text-blue-600">{currentUser.zaloPhone}</span>
+            <span className="hict-small-dot" aria-hidden="true" />
           </div>
           <p className="text-[10px] text-slate-400">
             Nhận thông báo, giao bài và phản hồi ngay trong ứng dụng.

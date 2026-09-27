@@ -1,3 +1,4 @@
+import { UserAvatar } from './Brand';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   MessageSquare,
@@ -553,11 +554,7 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
 
           {selectedPartner && (
             <div className="flex items-center gap-2 shrink-0">
-              <img
-                src={selectedPartner.avatar}
-                alt={selectedPartner.fullName}
-                className="w-7 h-7 rounded-lg object-cover ring-1 ring-slate-200"
-              />
+              <UserAvatar src={selectedPartner.avatar} name={selectedPartner.fullName} className="w-7 h-7 rounded-lg object-cover ring-1 ring-slate-200" />
             </div>
           )}
         </div>

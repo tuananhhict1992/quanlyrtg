@@ -1,3 +1,4 @@
+import { UserAvatar } from './Brand';
 import React, { useState, useEffect, useRef } from 'react';
 import { Employee, ZaloMessage } from '../types';
 import {
@@ -293,51 +294,15 @@ export const ZaloView: React.FC<ZaloViewProps> = ({
         </div>
       )}
 
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border border-slate-800">
-        <div className="space-y-2 max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 backdrop-blur-md text-xs font-semibold tracking-wide border border-indigo-400/30 text-indigo-200">
-            <BellRing className="w-3.5 h-3.5 text-indigo-300" />
-            <span>Trung Tâm Tin Nhắn & Thông Báo Nội Bộ</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            Thông Báo Điều Hành Nội Bộ
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Phát thông báo điều hành và chỉ đạo theo <strong className="text-white">Cá nhân</strong>, <strong className="text-white">Ca trực</strong> và <strong className="text-white">Toàn thể</strong> nhân viên. Hỗ trợ <strong className="text-amber-300">hẹn giờ phát tự động</strong> khi người dùng mở app (kiểm tra lịch mỗi 30 giây).
-          </p>
-        </div>
-
-        {/* Top Summary Badges */}
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full md:w-auto">
-          <div className="flex-1 sm:flex-none px-4 py-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 text-center">
-            <div className="text-xl font-bold text-white">{sentCount}</div>
-            <div className="text-[11px] text-slate-300">Đã phát</div>
-          </div>
-          <div className="flex-1 sm:flex-none px-4 py-3 rounded-2xl bg-amber-500/20 backdrop-blur-md border border-amber-400/30 text-center">
-            <div className="text-xl font-bold text-amber-300 flex items-center justify-center gap-1">
-              <Clock className="w-4 h-4" />
-              <span>{scheduledCount}</span>
-            </div>
-            <div className="text-[11px] text-amber-200 font-medium">Hẹn giờ chờ phát</div>
-          </div>
-          <div
-            onClick={() => setActiveMainTab('INBOX')}
-            className="flex-1 sm:flex-none px-4 py-3 rounded-2xl bg-indigo-500/25 backdrop-blur-md border border-indigo-400/30 text-center cursor-pointer hover:bg-indigo-500/40 transition-colors"
-          >
-            <div className="text-xl font-bold text-indigo-200 flex items-center justify-center gap-1">
-              <Inbox className="w-4 h-4" />
-              <span>{myInboxMessages.length}</span>
-              {myUnreadCount > 0 && (
-                <span className="text-[10px] bg-rose-500 text-white px-1.5 py-0.2 rounded-full">
-                  {myUnreadCount} mới
-                </span>
-              )}
-            </div>
-            <div className="text-[11px] text-indigo-200">Hộp thư của tôi</div>
-          </div>
-        </div>
+      <div className="hict-page-heading">
+        <div><div className="hict-eyebrow">Kết nối đội ngũ</div><h1>Thông báo nội bộ</h1><p>Gửi thông báo cho cá nhân, Ca trực hoặc toàn thể nhân viên.</p></div>
       </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="hict-panel p-4"><div className="text-xl font-bold text-blue-800">{sentCount}</div><div className="text-[11px] text-slate-500 mt-1">Đã phát</div></div>
+        <div className="hict-panel p-4"><div className="text-xl font-bold text-amber-700">{scheduledCount}</div><div className="text-[11px] text-slate-500 mt-1">Hẹn giờ chờ phát</div></div>
+        <button type="button" onClick={()=>setActiveMainTab('INBOX')} className="hict-panel p-4 text-left hover:border-blue-300"><div className="text-xl font-bold text-blue-800 flex items-center gap-2">{myInboxMessages.length}{myUnreadCount>0&&<span className="text-[10px] bg-rose-50 text-rose-600 px-2 py-1 rounded-full">{myUnreadCount} mới</span>}</div><div className="text-[11px] text-slate-500 mt-1">Hộp thư của tôi</div></button>
+      </div>
+      <p className="text-[11px] text-slate-500">Tin hẹn giờ được kiểm tra mỗi 30 giây khi app đang mở.</p>
 
       {submitError && <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">{submitError}</p>}
       {/* Success Notification Alert */}
@@ -357,7 +322,7 @@ export const ZaloView: React.FC<ZaloViewProps> = ({
       )}
 
       {/* Primary Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
         <button
           onClick={() => setActiveMainTab('COMPOSE')}
           className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
@@ -570,11 +535,7 @@ export const ZaloView: React.FC<ZaloViewProps> = ({
 
                   {currentSelectedEmp && (
                     <div className="flex items-center gap-3 pt-1 text-xs text-slate-600">
-                      <img
-                        src={currentSelectedEmp.avatar}
-                        alt={currentSelectedEmp.fullName}
-                        className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-200"
-                      />
+                      <UserAvatar src={currentSelectedEmp.avatar} name={currentSelectedEmp.fullName} className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-200" />
                       <div>
                         <span className="font-bold text-slate-900">{currentSelectedEmp.fullName}</span>
                         <span className="mx-1.5 text-slate-300">•</span>

@@ -1,3 +1,4 @@
+import { UserAvatar } from './Brand';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Shield,
@@ -781,11 +782,7 @@ export const RoleTemplateManager: React.FC<RoleTemplateManagerProps> = ({
                   className="p-3 rounded-2xl border border-slate-200 bg-white hover:border-indigo-200 transition-all flex items-center justify-between gap-3 shadow-2xs"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <img
-                      src={emp.avatar}
-                      alt={emp.fullName}
-                      className="w-9 h-9 rounded-xl object-cover ring-1 ring-slate-200 shrink-0"
-                    />
+                    <UserAvatar src={emp.avatar} name={emp.fullName} className="w-9 h-9 rounded-xl object-cover ring-1 ring-slate-200 shrink-0" />
                     <div className="min-w-0">
                       <div className="font-bold text-xs text-slate-900 truncate">
                         {emp.fullName}

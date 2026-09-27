@@ -1401,9 +1401,9 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
+    <div className="hict-workspace text-slate-800 font-sans antialiased">
       {/* Toast Notification Bar */}
-      <div className="fixed bottom-5 right-5 z-[120] flex flex-col gap-2 pointer-events-none">
+      <div className="hict-toasts fixed bottom-5 right-5 z-[120] flex flex-col gap-2 pointer-events-none">
         {toasts.map((toast) => (
           <div
             key={toast.id}
@@ -1420,6 +1420,7 @@ export default function App() {
             {toast.type === 'error' && <AlertTriangle className="w-4 h-4 text-rose-400" />}
             <span>{toast.message}</span>
             <button
+              aria-label="Đóng thông báo"
               onClick={() => removeToast(toast.id)}
               className="ml-2 text-slate-400 hover:text-white"
             >
@@ -1526,7 +1527,7 @@ export default function App() {
         PostgreSQLOnline={!dataLoading}
       />
 
-      <div className="flex-1 flex w-full max-w-[1600px] mx-auto overflow-hidden">
+      <div className="hict-workspace-body">
         {/* Responsive Sidebar Navigation */}
         <Sidebar
           activeTab={activeTab}
@@ -1545,7 +1546,7 @@ export default function App() {
         />
 
         {/* Main Content View Container */}
-        <main className="flex-1 p-3 sm:p-6 lg:p-8 overflow-y-auto max-h-[calc(100vh-65px)] supports-[max-height:100dvh]:max-h-[calc(100dvh-65px)] min-h-0 min-w-0">
+        <main className="hict-main">
           {dataLoading&&<p role="status" className="text-sm text-slate-500 mb-3">Đang tải dữ liệu…</p>}
           {!isTabAllowed(activeTab as TabType, currentUser) ? (
             <div className="max-w-xl mx-auto my-12 p-8 bg-white rounded-3xl border border-rose-200 shadow-xl text-center space-y-4">

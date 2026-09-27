@@ -1,3 +1,4 @@
+import { UserAvatar } from './Brand';
 import {GoogleReportActions} from './GoogleReportActions';
 import {parseWorkbook} from '../services/excelProcessing';
 import {apiFetch,api} from '../services/supabase';
@@ -1052,11 +1053,7 @@ export const HrManagementView: React.FC<HrManagementViewProps> = ({
                   onClick={() => setSelectedEmployeeDetail(emp)}
                   className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
                 >
-                  <img
-                    src={emp.avatar}
-                    alt={emp.fullName}
-                    className="w-12 h-12 rounded-2xl object-cover ring-2 ring-slate-100 shrink-0"
-                  />
+                  <UserAvatar src={emp.avatar} name={emp.fullName} className="w-12 h-12 rounded-2xl object-cover ring-2 ring-slate-100 shrink-0" />
 
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5 justify-between">
@@ -1363,11 +1360,7 @@ export const HrManagementView: React.FC<HrManagementViewProps> = ({
                         onClick={() => setSelectedEmployeeDetail(emp)}
                         className="flex items-center gap-3 cursor-pointer"
                       >
-                        <img
-                          src={emp.avatar}
-                          alt={emp.fullName}
-                          className="w-10 h-10 rounded-xl object-cover ring-1 ring-slate-200"
-                        />
+                        <UserAvatar src={emp.avatar} name={emp.fullName} className="w-10 h-10 rounded-xl object-cover ring-1 ring-slate-200" />
                         <div>
                           <div className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors flex items-center gap-1.5">
                             <span>{emp.fullName}</span>
@@ -1573,11 +1566,7 @@ export const HrManagementView: React.FC<HrManagementViewProps> = ({
             </div>
 
             <div className="flex items-center gap-3">
-              <img
-                src={selectedEmployeeDetail.avatar}
-                alt={selectedEmployeeDetail.fullName}
-                className="w-14 h-14 rounded-2xl object-cover ring-2 ring-indigo-500/20"
-              />
+              <UserAvatar src={selectedEmployeeDetail.avatar} name={selectedEmployeeDetail.fullName} className="w-14 h-14 rounded-2xl object-cover ring-2 ring-indigo-500/20" />
               <div className="min-w-0 flex-1">
                 <h3 className="text-lg font-bold text-slate-900 truncate">{selectedEmployeeDetail.fullName}</h3>
                 <p className="text-xs text-slate-500 truncate">

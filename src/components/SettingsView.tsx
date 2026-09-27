@@ -1,3 +1,4 @@
+import { UserAvatar } from './Brand';
 import {supabase} from '../services/supabase';
 import React, { useState } from 'react';
 import {
@@ -185,16 +186,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {/* Avatar Section */}
             <div className="flex flex-col sm:flex-row items-center gap-6 pb-6 border-b border-slate-100">
               <div className="relative">
-                <img
-                  src={
-                    avatarPreview ||
-                    `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                      currentUser.fullName
-                    )}&background=random`
-                  }
-                  alt="Avatar"
-                  className="w-20 h-20 rounded-2xl object-cover ring-4 ring-slate-100 shadow-xs"
-                />
+                <UserAvatar src={avatarPreview} name={currentUser.fullName} className="w-20 h-20 rounded-2xl object-cover ring-4 ring-slate-100 shadow-xs" />
                 <label
                   htmlFor="avatar-upload"
                   className="absolute -bottom-2 -right-2 p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md cursor-pointer transition-colors"

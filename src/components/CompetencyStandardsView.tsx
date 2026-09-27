@@ -1,3 +1,4 @@
+import { UserAvatar } from './Brand';
 import React, { useState, useMemo } from 'react';
 import {
   SlidersHorizontal,
@@ -1360,11 +1361,7 @@ export const CompetencyStandardsView: React.FC<CompetencyStandardsViewProps> = (
                           <td className="py-3 px-3 text-slate-400 text-center font-medium">{idx + 1}</td>
                           <td className="py-3 px-3.5">
                             <div className="flex items-center gap-2.5">
-                              <img
-                                src={emp.avatar}
-                                alt={emp.fullName}
-                                className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-200 shrink-0"
-                              />
+                              <UserAvatar src={emp.avatar} name={emp.fullName} className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-200 shrink-0" />
                               <div>
                                 <div className="font-bold text-slate-900">{emp.fullName}</div>
                                 <div className="text-[11px] text-slate-500 font-mono">{emp.employeeCode}</div>
@@ -1644,11 +1641,7 @@ export const CompetencyStandardsView: React.FC<CompetencyStandardsViewProps> = (
                           <td className="py-3 px-3 text-slate-400 text-center font-medium">{idx + 1}</td>
                           <td className="py-3 px-3.5">
                             <div className="flex items-center gap-2.5">
-                              <img
-                                src={emp.avatar}
-                                alt={emp.fullName}
-                                className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-200 shrink-0"
-                              />
+                              <UserAvatar src={emp.avatar} name={emp.fullName} className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-200 shrink-0" />
                               <div>
                                 <div className="font-bold text-slate-900">{emp.fullName}</div>
                                 <div className="text-[11px] text-slate-500 font-mono">{emp.employeeCode}</div>
@@ -1771,11 +1764,7 @@ export const CompetencyStandardsView: React.FC<CompetencyStandardsViewProps> = (
             {/* Modal Header */}
             <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3.5">
-                <img
-                  src={scorecardModalEmp.emp.avatar}
-                  alt={scorecardModalEmp.emp.fullName}
-                  className="w-12 h-12 rounded-2xl object-cover ring-2 ring-indigo-100"
-                />
+                <UserAvatar src={scorecardModalEmp.emp.avatar} name={scorecardModalEmp.emp.fullName} className="w-12 h-12 rounded-2xl object-cover ring-2 ring-indigo-100" />
                 <div>
                   <h3 className="text-base sm:text-lg font-black text-slate-900">
                     Phiếu Điểm Đánh Giá Năng Lực Chi Tiết
