@@ -3,12 +3,18 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { pool } from '../backend/db';
 import { testDatabase } from '../scripts/check-migrations';
-import { accountEmail, accountStatus, setEmployeePassword, loginByUsername, changeOwnPassword, INVALID_LOGIN } from '../backend/accounts';
+import { accountEmail, accountStatus, setEmployeePassword, loginByUsername, changeOwnPassword, INVALID_LOGIN, verifyAccountAdminKey } from '../backend/accounts';
 import { assertSessionPolicy } from '../backend/auth';
 import { writeRecord } from '../backend/records';
 
 const admin = { id: 'admin', role: 'ADMIN', status: 'ACTIVE' };
 const manager = { id: 'manager', role: 'USER', status: 'ACTIVE', assignedPermissions: ['MANAGE_HR','MANAGE_PERMISSIONS'] };
+test('Admin key verification is read-only and hides provider errors', async () => {
+  const factory:any = () => ({auth:{admin:{getUserById:async(id:string)=>({data:{user:{id}},error:null})}}});
+  await verifyAccountAdminKey('verified-admin',factory);
+  const invalid:any = () => ({auth:{admin:{getUserById:async()=>({data:{user:null},error:{message:'private provider details'}})}}});
+  await assert.rejects(()=>verifyAccountAdminKey('verified-admin',invalid),(e:any)=>e.status===503&&!e.message.includes('private provider'));
+});
 test('username access, Admin-only provisioning/reset, idempotency, first password, no credential archive', async () => {
   assert(accountEmail('e1').split('@')[0].length <= 64);
   const db = await testDatabase(), savedQuery = pool.query, savedConnect = pool.connect;

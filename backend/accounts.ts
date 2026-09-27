@@ -58,12 +58,18 @@ export async function loginByUsername(usernameInput: unknown, password: unknown,
   return { access_token: data.session.access_token, refresh_token: data.session.refresh_token };
 }
 
-export async function accountStatus(actor: any, id: string) {
+export async function verifyAccountAdminKey(authUserId: string, clientFactory = authClient) {
+  const { data, error } = await clientFactory(true).auth.admin.getUserById(authUserId);
+  if (error || data.user?.id !== authUserId)
+    throw new HttpError(503, 'Chưa xác thực được khóa quản trị Supabase. Kiểm tra khóa của đúng project trên máy chủ rồi thử lại.');
+}
+export async function accountStatus(actor: any, id: string, authUserId?: string) {
   assertAccountAdmin(actor);
   const row = (await pool.query(`select r.data->>'username' as username, a.auth_user_id is not null as linked,
     coalesce(a.must_change_password,false) as must_change_password
     from private.records r left join private.accounts a on a.employee_id=r.id where r.module='employees' and r.id=$1`, [id])).rows[0];
   if (!row) throw new HttpError(404, 'Không tìm thấy nhân sự.');
+  if (accountAdminConfigured() && authUserId) await verifyAccountAdminKey(authUserId);
   return { ...row, configured: accountAdminConfigured() };
 }
 
@@ -148,7 +154,7 @@ publicAccountsRouter.post('/login', rateLimit({ windowMs: 300000, limit: 100, st
   asyncRoute(async (req, res) => { res.set('Cache-Control', 'no-store'); res.json(await loginByUsername(req.body?.username, req.body?.password)); }));
 export const accountsRouter = Router();
 accountsRouter.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
-accountsRouter.get('/admin/accounts/:id', asyncRoute(async (req, res) => res.json(await accountStatus(req.user, req.params.id))));
+accountsRouter.get('/admin/accounts/:id', asyncRoute(async (req, res) => res.json(await accountStatus(req.user, req.params.id, req.authUser.id))));
 accountsRouter.post('/admin/accounts/:id/password', rateLimit({ windowMs: 60000, limit: 15, keyGenerator: (req: any) => req.user.id }),
   asyncRoute(async (req, res) => res.json(await setEmployeePassword(req.user, req.params.id, req.body))));
 accountsRouter.post('/account/password', rateLimit({ windowMs: 60000, limit: 5, keyGenerator: (req: any) => req.user.id }),
