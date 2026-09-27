@@ -120,7 +120,7 @@ Google OAuth đã chuyển sang In production ngày 26/09/2026 theo xác nhận 
    npm.cmd start
    ```
 
-   Giữ terminal mở, vào [ứng dụng local](http://localhost:3000), đăng nhập bằng email/mật khẩu ở bước 4. Kiểm tra nhìn thấy menu nhân sự và phân quyền. Khi thay `VITE_SUPABASE_*`, phải build lại vì các giá trị này được đóng gói vào frontend. Khi thay cấu hình server/Google, phải khởi động lại tiến trình server và worker.
+   Giữ terminal mở, vào [ứng dụng local](http://localhost:3000), đăng nhập bằng tên đăng nhập đã lưu trong hồ sơ và mật khẩu ở bước 4. Admin đã cấu hình Google có thể dùng nút đăng nhập Google. Kiểm tra nhìn thấy menu nhân sự và phân quyền. Khi thay `VITE_SUPABASE_*`, phải build lại vì các giá trị này được đóng gói vào frontend. Khi thay cấu hình server/Google, phải khởi động lại tiến trình server và worker.
 
    Để phát triển mã nguồn, dùng terminal mới không có `NODE_ENV=production`, hoặc `Remove-Item Env:NODE_ENV -ErrorAction SilentlyContinue`, rồi chạy `npm.cmd run dev`.
 
@@ -229,7 +229,7 @@ Google OAuth đã chuyển sang In production ngày 26/09/2026 theo xác nhận 
 
 10. **Đưa lên máy chủ để nhân viên sử dụng**
 
-    Bản hiện tại đã được AI Studio Publish lên Cloud Run tại địa chỉ đầu tài liệu. Site URL trong Supabase Auth đã đổi sang `https://quanlyrtg-290449474780.asia-southeast1.run.app`. Đăng nhập bằng tài khoản admin trên địa chỉ này để kiểm tra phiên mới; phiên đăng nhập Preview không tự chuyển sang tên miền khác.
+    Bản hiện tại đã được AI Studio Publish lên Cloud Run tại địa chỉ đầu tài liệu. Site URL trong Supabase Auth là `https://quanlyrtg.ai.studio`. Đăng nhập bằng tài khoản admin trên địa chỉ này để kiểm tra phiên mới; phiên đăng nhập Preview không tự chuyển sang tên miền khác. Google dùng PKCE; mở và hoàn tất đăng nhập trong cùng trình duyệt để bộ kiểm chứng mã hoạt động.
 
     Khi sửa mã hoặc Secrets trong AI Studio, kiểm tra Preview rồi vào **Publish → Republish** để cập nhật website chính thức. Push GitHub không tự cập nhật bản đã Publish. Sau mỗi lần Republish, kiểm tra trang đăng nhập, `/api/health`, đăng nhập và nghiệp vụ vừa thay đổi. Không bấm Unpublish nếu vẫn cần người dùng truy cập web.
 
