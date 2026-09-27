@@ -32,7 +32,7 @@ test('invalid or missing answer is reported instead of silently choosing A',()=>
 });
 test('386-question import is atomic, retry safe, skips existing questions and folder deletion persists',async()=>{
   const db=await testDatabase(),originalQuery=pool.query,originalConnect=pool.connect;
-  const query=async(sql:string,args:any[]=[])=>{const r=await db.query(sql,args);return {...r,rowCount:r.affectedRows??r.rows.length};};
+  const query=async(sql:string,args:any[]=[])=>{const r=await db.query<Record<string,any>>(sql,args);return {...r,rowCount:r.affectedRows??r.rows.length};};
   (pool as any).query=query;(pool as any).connect=async()=>({query,release(){}});
   const admin={id:'admin',role:'ADMIN',status:'ACTIVE'};
   const folder={id:'folder',name:'Bộ câu hỏi'};
