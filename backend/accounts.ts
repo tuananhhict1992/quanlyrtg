@@ -14,7 +14,7 @@ export function validateUsername(value: unknown) {
   return username;
 }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
-export const accountEmail = (employeeId: string) => `rtg.${hash(employeeId)}@accounts.invalid`;
+export const accountEmail = (employeeId: string) => `rtg.${hash(employeeId).slice(0,40)}@accounts.invalid`;
 export const accountAdminConfigured = () => !!(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 export function authClient(admin = false) {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;

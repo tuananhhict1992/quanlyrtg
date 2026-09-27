@@ -10,6 +10,7 @@ import { writeRecord } from '../backend/records';
 const admin = { id: 'admin', role: 'ADMIN', status: 'ACTIVE' };
 const manager = { id: 'manager', role: 'USER', status: 'ACTIVE', assignedPermissions: ['MANAGE_HR','MANAGE_PERMISSIONS'] };
 test('username access, Admin-only provisioning/reset, idempotency, first password, no credential archive', async () => {
+  assert(accountEmail('e1').split('@')[0].length <= 64);
   const db = await testDatabase(), savedQuery = pool.query, savedConnect = pool.connect;
   const query = async (sql: string, args: any[] = []) => {
     const result = await db.query<any>(sql, args);
