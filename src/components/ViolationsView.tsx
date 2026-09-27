@@ -1736,7 +1736,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
               <div>
-                {(currentUser.role === 'ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_VIOLATIONS')) && selectedIncidentForDetail.isRtgRelated && onNotifyZalo && <button type="button" className="px-4 py-2 rounded-lg bg-blue-700 text-white" onClick={() => { onNotifyZalo(selectedIncidentForDetail); setSelectedIncidentForDetail(null); }}>Thông báo Zalo</button>}
+                {(currentUser.role === 'ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_VIOLATIONS')) && selectedIncidentForDetail.isRtgRelated && onNotifyZalo && <button type="button" className="px-4 py-2 rounded-lg bg-blue-700 text-white" onClick={() => { onNotifyZalo(selectedIncidentForDetail); setSelectedIncidentForDetail(null); }}>Thông báo nội bộ</button>}
                 {canManageViolations && !selectedIncidentForDetail.isSyncedToProfile ? (
                   <button
                     onClick={() => {

@@ -24,7 +24,7 @@ interface QuickChatWindowProps {
   allEmployees?: Employee[];
   employees?: Employee[];
   messages?: ZaloMessage[];
-  onSendMessage: (msg: ZaloMessage) => void;
+  onSendMessage: (msg: ZaloMessage) => Promise<void>;
   onMarkAsRead?: (msgId: string) => void;
   isOpen: boolean;
   onClose: () => void;
@@ -247,7 +247,11 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
   const totalUnreadCount = unreadAllCount + unreadDeptCount + unreadDirectCount;
 
   // Send message handler
-  const handleSend = () => {
+  const [sending, setSending] = useState(false), [sendError, setSendError] = useState('');
+  const sendPending = useRef(false);
+  const pendingDraft = useRef<{key:string;id:string}|null>(null);
+  const handleSend = async () => {
+    if (sendPending.current) return;
     if (!inputText.trim()) return;
 
     const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
@@ -318,7 +322,12 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
       };
     }
 
-    onSendMessage(newMsg);
+    const key=JSON.stringify([newMsg.recipientType,newMsg.recipientIds,newMsg.department,newMsg.content,newMsg.priority]);
+    if(pendingDraft.current?.key!==key)pendingDraft.current={key,id:crypto.randomUUID()};
+    newMsg.id=pendingDraft.current.id;
+    sendPending.current=true; setSending(true); setSendError('');
+    try { await onSendMessage(newMsg); } catch (error) {setSendError((error as Error).message);return;} finally {sendPending.current=false;setSending(false);}
+    pendingDraft.current=null;
     setInputText('');
     setIsUrgent(false);
     setShowEmojiPicker(false);
@@ -371,7 +380,7 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
             )}
           </div>
           <div className="text-left">
-            <div className="text-xs font-bold leading-tight">Lịch sử & Soạn Zalo</div>
+            <div className="text-xs font-bold leading-tight">Cửa Sổ Chat Nhanh</div>
             <div className="text-[10px] text-indigo-100">
               {activeChannel === 'ALL'
                 ? 'Kênh Toàn thể'
@@ -402,7 +411,7 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold tracking-wide">Lịch sử & Soạn Zalo</span>
+              <span className="text-xs font-bold tracking-wide">Cửa Sổ Chat Nhanh</span>
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-medium border border-emerald-400/30">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 Realtime
@@ -632,7 +641,7 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
                 </div>
                 <div className="text-xs font-bold text-slate-700">Chưa có tin nhắn trong kênh này</div>
                 <p className="text-[11px] text-slate-400 max-w-xs leading-relaxed">
-                  Lịch sử này chỉ nằm trong ứng dụng. Nhập nội dung bên dưới để soạn và xác nhận thông báo Zalo.
+                  Hãy nhập tin nhắn bên dưới và bấm gửi để bắt đầu kết nối trực tiếp với đồng nghiệp!
                 </p>
               </>
             )}
@@ -738,6 +747,7 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
         </button>
       </div>
 
+      {sendError && <p role="alert" className="p-2 text-xs text-red-700 bg-red-50">{sendError}</p>}
       {/* Message Input & Send Controls Form */}
       <div className="p-3 bg-white border-t border-slate-200 shrink-0">
         <div className="flex items-end gap-2">
@@ -754,7 +764,7 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
                   : activeChannel === 'DEPARTMENT'
                   ? `gửi ca ${currentUser.department}...`
                   : `gửi ${selectedPartner?.fullName || 'đồng nghiệp'}...`
-              } (Enter để soạn thông báo Zalo)`}
+              } (Nhấn Enter để gửi)`}
               className="w-full px-3.5 py-2 rounded-2xl border border-slate-300 text-xs text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none leading-relaxed"
             />
           </div>
@@ -762,13 +772,13 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
           <button
             type="button"
             onClick={handleSend}
-            disabled={!inputText.trim()}
+            disabled={sending || !inputText.trim()}
             className={`p-3 rounded-2xl font-bold shadow-md transition-all shrink-0 flex items-center justify-center ${
               inputText.trim()
                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 active:scale-95'
                 : 'bg-slate-100 text-slate-300 cursor-not-allowed'
             }`}
-            title="Soạn thông báo Zalo (Enter)"
+            title="Gửi tin nhắn (Enter)"
           >
             <Send className="w-4 h-4" />
           </button>

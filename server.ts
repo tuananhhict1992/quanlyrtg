@@ -6,7 +6,7 @@ import { recordsRouter } from "./backend/records";
 import { googleRouter } from "./backend/google-routes";
 import { finishGoogleOAuth } from "./backend/google-oauth";
 import { filesRouter, validateFile } from "./backend/files";
-import { zaloRouter } from "./backend/zalo-notifications";
+import { internalNotificationsRouter } from "./backend/internal-notifications";
 import { examsRouter } from "./backend/exams";
 import { operationsRouter } from "./backend/operations";
 import { startWorker } from "./backend/worker";
@@ -119,8 +119,9 @@ app.use("/api/extract-document", (req: any, _res, next) => {
     next(e);
   }
 });
-app.use("/api/zalo/send", rateLimit({ windowMs: 60000, limit: 10, keyGenerator: (req: any) => req.user.id }));
-app.use("/api/zalo", zaloRouter);
+app.use("/api/internal-notifications/send", rateLimit({ windowMs: 60000, limit: 10, keyGenerator: (req: any) => req.user.id }));
+app.use("/api/internal-notifications", internalNotificationsRouter);
+app.use("/api/zalo", (_req, res) => res.status(410).json({error: "Kênh Zalo đã ngừng. Sử dụng thông báo nội bộ trong ứng dụng."}));
 app.use(
   ["/api/extract-document", "/api/ai"],
   asyncRoute(async (req: any, _res, next) => {

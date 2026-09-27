@@ -88,7 +88,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">
-                Hệ thống Tra cứu Nội bộ • Đánh giá Năng lực • Thông báo Zalo • Camera AI
+                Hệ thống Tra cứu Nội bộ • Đánh giá Năng lực • Tin nhắn Nội bộ • Camera AI
               </p>
             </div>
           </div>
@@ -109,8 +109,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Internal Messaging Status Badge */}
           <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-xs font-medium text-indigo-700">
             <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Thông báo Zalo</span>
-            <span className="font-semibold">Qua OA</span>
+            <span>Thông báo nội bộ: </span>
+            <span className="font-semibold">Hoạt động</span>
           </div>
 
           {/* Nút Tổng Admin: Đẩy toàn bộ dữ liệu lên Google Sheet (Data_RTG) */}
@@ -135,10 +135,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               type="button"
               onClick={onToggleChat}
               className="relative flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs hover:shadow-indigo-200"
-              title="Mở lịch sử nội bộ và soạn thông báo Zalo"
+              title="Mở cửa sổ Chat nhanh để nhận, đọc và gửi tin tức thì"
             >
               <MessageSquare className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Lịch sử & Soạn Zalo</span>
+              <span className="hidden sm:inline">Cửa Sổ Chat</span>
               {unreadChatCount > 0 && (
                 <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full ring-2 ring-white animate-bounce">
                   {unreadChatCount}

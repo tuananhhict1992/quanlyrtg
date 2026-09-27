@@ -430,7 +430,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-indigo-300 transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500">Thông báo Zalo</span>
+            <span className="text-xs font-semibold text-slate-500">Tin nhắn nội bộ</span>
             <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-105 transition-transform">
               <BellRing className="w-5 h-5" />
             </div>
@@ -615,15 +615,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <BellRing className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-slate-900 text-sm">Lịch sử thông báo trong ứng dụng</h3>
-              <p className="text-xs text-slate-500">Soạn thông báo Zalo cá nhân, theo Ca hoặc tập thể tại trung tâm thông báo</p>
+              <h3 className="font-bold text-slate-900 text-sm">Thông Báo Nội Bộ Gần Đây</h3>
+              <p className="text-xs text-slate-500">Phát thông báo cá nhân, theo ca trực và toàn thể cơ quan</p>
             </div>
           </div>
           <button
             onClick={() => setActiveTab('zalo')}
             className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
           >
-            Trung tâm Thông báo Zalo →
+            Trung tâm Tin nhắn nội bộ →
           </button>
         </div>
 

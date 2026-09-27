@@ -60,11 +60,12 @@ Các dashboard/biểu mẫu cũ vẫn cần một tập dữ liệu đầy đủ
 Build còn cảnh báo chunk JavaScript trên 500 kB (entry và module thi). Module đã lazy load; cần đo tải trên thiết bị thực trước khi tối ưu sâu hơn.
 
 Mẫu import Google mới sử dụng snapshot báo cáo của RTG. Tệp Sheets cũ theo cột vẫn có thể xuất XLSX rồi dùng parser Excel cũ; cần đối chiếu bản xem trước trước khi nhập. Không dùng Sheets làm nguồn dữ liệu đọc thường xuyên cho ứng dụng.
-# Cập nhật thông báo Zalo — 27/09/2026
+# Khôi phục thông báo nội bộ — 27/09/2026
 
-- Đã triển khai Cloud Run revision `quanlyrtg-00005-bvc`, tạo lúc 09:45:20 (UTC+7) ngày 27/09/2026 và nhận 100% lưu lượng. AI Studio có báo lỗi RPC/mất phản hồi trong Publish, nhưng đã đối chiếu Cloud Run và website thật: nhãn Zalo mới, API nhật ký và cấu hình OA tải thành công, không có lỗi console trong kiểm tra này. Chưa có OA, chưa gửi tin thật.
-- Thay màn hình soạn thông báo nội bộ bằng Zalo OA: nguồn vi phạm, giao bài, phép; chọn cá nhân/Ca/tập thể, nội dung và Preview trước Confirm. Giữ lịch sử nội bộ và giao bài cũ.
-- 26/26 kiểm thử backend đạt; ca 76 người nhận được tách đúng UID, retry không gửi lại success/unknown. Typecheck, build, migration cục bộ và các kiểm thử giao diện 390/768/1366/1920px đạt. Test nút giao bài đã cập nhật theo nhãn “Giao bài & soạn Zalo” và chạy lại thành công.
-- Migration `20260927021032_zalo_notifications.sql` đã áp dụng vào `utcpdfiyaqnimdasttak`, SHA-256 `105e45810a0dc8847c2482c59b7f6e209a735fef2ca09a3b911af1a2d01ab133`. Ba bảng private bật RLS, không cho anon/authenticated SELECT. Không có thông báo thật được tạo khi kiểm thử.
-- Supabase advisor hiện có thông tin [RLS không policy](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) trên bảng private chỉ server truy cập (chủ đích) và cảnh báo [Auth leaked-password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) chưa bật. Không thay Auth hoặc quyền truy cập để xử lý thông báo.
-- Người dùng chưa có OA. Chưa xác nhận được gửi Zalo thật; chưa có ZBS template / OAuth refresh tự động. Xem `HUONG_DAN_ZALO.md` về các điều kiện kết nối, token và worker hẹn giờ.
+- Khôi phục hộp thư, chat nhanh, lịch sử, trạng thái đã đọc và soạn cá nhân/Ca/tập thể. Vi phạm và phép mở bản nháp nội bộ để Preview/Confirm. Giao bài vẫn gửi một thông báo cho mỗi đề/người.
+- Server xác định người nhận ACTIVE, kiểm tra quyền và phạm vi Ca. Transaction + khóa theo job ID chống ghi trùng; lỗi giữ bản nháp, không báo thành công trước khi database lưu. Tin hẹn giờ chưa hiển thị cho người nhận trước thời điểm phát.
+- API Zalo trả 410 sau xác thực; worker và provider không thể gửi ra Zalo, kể cả khi còn secret cũ. Hàng đợi Zalo thực tế trống khi bắt đầu chuyển đổi, không có tin chờ cần hủy. Không gửi thông báo thật để kiểm thử.
+- Không cần migration mới. Giữ migration 20260927021032_zalo_notifications.sql đã áp dụng và ba bảng private đang bật RLS để bảo toàn dữ liệu. Mã legacy zaloMessages được giữ cho lịch sử nội bộ.
+- Hẹn giờ được xử lý khi đọc hộp thư và kiểm tra lại mỗi 30 giây; nếu app đóng và worker không chạy, phát khi người dùng mở lại.
+
+Kiểm tra local đạt: typecheck, production build, migrations (14 bảng ứng dụng bật RLS), 26/26 unit/API/database tests và 11/11 kiểm thử Chrome. Các màn hình đăng nhập, quản trị, thông báo chạy ở 390/768/1366/1920px; retry thông báo giữ bản nháp và job ID, giao bài 76 người giữ chống trùng. Build còn cảnh báo kích thước chunk lớn như trước. Phiên bản triển khai được ghi sau khi xác nhận website thật.

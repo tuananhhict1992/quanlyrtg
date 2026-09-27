@@ -1106,7 +1106,7 @@ export const LeaveRegistrationView: React.FC<LeaveRegistrationViewProps> = ({
 
                       {/* Phê duyệt / Thao tác (Admin / Quản lý) */}
                       <td className="py-3.5 px-4 text-right">
-                        {(currentUser.role === 'ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_LEAVE')) && userCanApproveThis && onNotifyZalo && <button type="button" className="mb-2 px-3 py-2 rounded-lg border text-blue-700 text-xs font-semibold" onClick={() => onNotifyZalo(req)}>Thông báo Zalo</button>}
+                        {(currentUser.role === 'ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_LEAVE')) && userCanApproveThis && onNotifyZalo && <button type="button" className="mb-2 px-3 py-2 rounded-lg border text-blue-700 text-xs font-semibold" onClick={() => onNotifyZalo(req)}>Thông báo nội bộ</button>}
                         {isPending && userCanApproveThis ? (
                           <div className="flex items-center justify-end gap-1.5">
                             {/* Nút Duyệt */}

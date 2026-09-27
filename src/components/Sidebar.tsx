@@ -138,7 +138,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'zalo',
-      label: 'Thông báo Zalo',
+      label: 'Tin nhắn nội bộ',
       sublabel: 'Cá nhân, Ca trực, Toàn thể',
       icon: BellRing,
       requiresPermission: 'MANAGE_ZALO',
@@ -323,11 +323,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Footer info */}
         <div className="p-3 mx-3 mb-3 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500">
           <div className="flex items-center justify-between text-slate-700 font-semibold mb-1">
-            <span>Kênh Zalo Đồng bộ</span>
+            <span>Kênh thông báo nội bộ</span>
             <span className="text-blue-600">{currentUser.zaloPhone}</span>
           </div>
           <p className="text-[10px] text-slate-400">
-            Thông báo qua Zalo OA sau khi người có thẩm quyền xác nhận.
+            Nhận thông báo, giao bài và phản hồi ngay trong ứng dụng.
           </p>
         </div>
       </aside>

@@ -1,7 +1,7 @@
 import { transaction } from "./db";
 import { audit, enqueue } from "./records";
 import { checksum } from "./security";
-export async function scheduledMaintenance() {
+export async function scheduledMaintenance(dispatchOnly = false) {
   await transaction(async (db) => {
     const rows = (
       await db.query(
@@ -9,7 +9,7 @@ export async function scheduledMaintenance() {
       )
     ).rows;
     for (const row of rows) {
-      const date = String(row.data.scheduledAt || "").replace(" ", "T");
+      const date = String(row.data.scheduledAt || "").replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00");
       const timestamp = Date.parse(
         /(Z|[+-]\d\d:\d\d)$/.test(date) ? date : date + "+07:00",
       );
@@ -17,6 +17,7 @@ export async function scheduledMaintenance() {
       const data = {
         ...row.data,
         status: "DELIVERED",
+        isScheduled: false,
         sentAt: new Date().toISOString(),
       };
       await db.query(
@@ -35,6 +36,7 @@ export async function scheduledMaintenance() {
         "insert into public.record_changes(module) values('zaloMessages')",
       );
     }
+    if (dispatchOnly) return;
     await db.query(
       "delete from public.record_changes where created_at<now()-interval '7 days'",
     );

@@ -55,8 +55,8 @@ const ZaloView=lazy(()=>import('./components/ZaloView').then(m=>({default:m.Zalo
 const PermissionsView=lazy(()=>import('./components/PermissionsView').then(m=>({default:m.PermissionsView})));
 import { LoginView } from './components/LoginView';
 const SettingsView=lazy(()=>import('./components/SettingsView').then(m=>({default:m.SettingsView})));
-import { ZaloNotificationComposer } from './components/ZaloNotificationComposer';
-import { canNotify, type ZaloDraft } from './services/zaloNotifications';
+import { InternalNotificationComposer } from './components/InternalNotificationComposer';
+import { canNotify, postInternalMessage, type InternalDraft } from './services/internalNotifications';
 import { formatDate } from './utils/date';
 import { QuickChatWindow } from './components/QuickChatWindow';
 const BxxlView=lazy(()=>import('./components/BxxlView').then(m=>({default:m.BxxlView})));
@@ -112,7 +112,7 @@ export default function App() {
   const [selectedEmpIdForPermission, setSelectedEmpIdForPermission] = useState<string | undefined>(undefined);
   const [libraryInitialCategory, setLibraryInitialCategory] = useState<any>('ALL');
 
-  const [zaloDraft, setZaloDraft] = useState<ZaloDraft | null>(null);
+  const [internalDraft, setInternalDraft] = useState<InternalDraft | null>(null);
 
   // Quick Chat Floating Window state
   const [isQuickChatOpen, setIsQuickChatOpen] = useState<boolean>(false);
@@ -869,12 +869,15 @@ export default function App() {
     }
   };
 
-  // External Zalo dispatch always goes through preview and server authorization.
-  const handleSendMessage = (msg: ZaloMessage) => {
-    setIsQuickChatOpen(false);
-    setZaloDraft({title: msg.title, content: msg.content, recipientType: msg.recipientType,
-      recipientIds: msg.recipientIds?.length ? msg.recipientIds : employees.filter(e => msg.recipientNames.includes(e.fullName)).map(e => e.id),
-      department: msg.department});
+  const handleSendMessage = async (msg: ZaloMessage) => {
+    try {
+      const saved = await postInternalMessage(msg);
+      setZaloMessages(prev => [saved, ...prev.filter(m => m.id !== saved.id)]);
+      addToast('success', saved.status === 'SCHEDULED' ? 'Đã lưu lịch thông báo nội bộ.' : 'Đã gửi thông báo vào hộp thư trong app.');
+    } catch (error) {
+      addToast('error', (error as Error).message);
+      throw error;
+    }
   };
 
   const handleDeleteMessage = async (msgId: string) => {
@@ -888,9 +891,15 @@ export default function App() {
     }
   };
 
-  const handleSendScheduledNow = (msgId: string) => {
+  const handleSendScheduledNow = async (msgId: string) => {
     const target = zaloMessages.find(m => m.id === msgId);
-    if (target) handleSendMessage(target);
+    if (!target) return;
+    try {
+      const updated = {...target, status: 'DELIVERED' as const, sentAt: new Date().toISOString(), isScheduled: false};
+      await saveDocument('zaloMessages', msgId, updated);
+      setZaloMessages(prev => prev.map(m => m.id === msgId ? updated : m));
+      addToast('success', 'Đã phát thông báo trong ứng dụng.');
+    } catch (error) { addToast('error', (error as Error).message); }
   };
 
   const handleMarkMessageAsRead = async (msgId: string) => {
@@ -922,10 +931,7 @@ export default function App() {
         return [...result.messages, ...prev.filter(m => !ids.has(m.id))];
       });
       removeToast(toastId);
-      addToast('success', 'Đã lưu giao bài trong hệ thống. Chọn nội dung và xác nhận để gửi Zalo.');
-      setZaloDraft({source: {module: 'quizzes', id: quizId}, title: 'Thông báo kiểm tra RTG',
-        content: 'Mời anh/chị đăng nhập hệ thống để làm bài kiểm tra: ' + (quizzes.find(q => q.id === quizId)?.title || 'Bài kiểm tra RTG') + '.',
-        recipientType: scope?.recipientType || 'INDIVIDUAL', department: scope?.department, recipientIds});
+      addToast('success', `Đã gửi ${result.sentCount} thông báo giao bài trong app.${result.alreadyAssignedCount ? ` ${result.alreadyAssignedCount} người đã được giao trước đó, không gửi trùng.` : ''}`);
     } catch (err: any) {
       removeToast(toastId);
       addToast('error', `Lỗi giao bài: ${err.message}`);
@@ -1211,7 +1217,7 @@ export default function App() {
   const notifyLeave = (req: LeaveRequest) => {
     if (!canNotify(currentUser, 'MANAGE_LEAVE')) return;
     const state = req.status === 'APPROVED' ? 'Đã duyệt' : req.status === 'REJECTED' ? 'Không được duyệt' : 'Chờ phê duyệt';
-    setZaloDraft({source: {module: 'leaveRequests', id: req.id}, title: 'Thông báo đăng ký phép — ' + state,
+    setInternalDraft({source: {module: 'leaveRequests', id: req.id}, title: 'Thông báo đăng ký phép — ' + state,
       content: 'Nhân viên: ' + req.employeeName + '\nThời gian: ' + formatDate(req.startDate) + ' đến ' + formatDate(req.endDate) + '\nTrạng thái: ' + state + (req.status === 'REJECTED' ? '\nLý do: ' + (req.rejectionReason || req.rejectReason || '') : ''),
       recipientType: 'INDIVIDUAL', recipientIds: [req.employeeId]});
   };
@@ -1612,7 +1618,7 @@ export default function App() {
               currentUser={currentUser}
               employees={employees}
               incidents={incidents}
-              onNotifyZalo={incident => setZaloDraft({source: {module: 'incidents', id: incident.id},
+              onNotifyZalo={incident => setInternalDraft({source: {module: 'incidents', id: incident.id},
                 title: 'Thông báo xử lý vi phạm RTG — ' + incident.code,
                 content: 'Nhân viên: ' + incident.violatorName + '\nThời gian: ' + incident.time + '\nĐịa điểm: ' + incident.location + '\nNội dung: ' + incident.what + '\nNguyên nhân: ' + incident.why + '\nXử lý: ' + incident.how,
                 recipientType: 'INDIVIDUAL', recipientIds: incident.matchedEmployeeId ? [incident.matchedEmployeeId] : [], department: incident.matchedDepartment})}
@@ -1687,7 +1693,7 @@ export default function App() {
               onDeleteFeedback={handleDeleteFeedback}
               onBackToDashboard={() => setActiveTab('dashboard')}
               onSendZaloNotification={(title, content, _recipientName, _recipientPhone, feedbackId, employeeId) => {
-                setZaloDraft({source: feedbackId ? {module:'feedbacks',id:feedbackId} : undefined,
+                setInternalDraft({source: feedbackId ? {module:'feedbacks',id:feedbackId} : undefined,
                   title,content,recipientType:'INDIVIDUAL',recipientIds:employeeId?[employeeId]:[]});
               }}
             />
@@ -1793,7 +1799,7 @@ export default function App() {
         </main>
       </div>
 
-      {zaloDraft && <ZaloNotificationComposer draft={zaloDraft} onClose={() => setZaloDraft(null)} />}
+      {internalDraft && <InternalNotificationComposer draft={internalDraft} onClose={() => setInternalDraft(null)} onComplete={message => {setZaloMessages(prev => [message,...prev.filter(m => m.id !== message.id)]);addToast('success','Đã gửi thông báo vào hộp thư nội bộ.');}} />}
 
       {/* Quick Chat Floating Window - Hộp thoại chat nhanh nhận, đọc và gửi tin tức thì */}
       {currentUser && (

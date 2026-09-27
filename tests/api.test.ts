@@ -15,6 +15,7 @@ test("health is public, all business, Google and AI APIs require authentication"
   for (const path of [
     "/api/ai/generate-questions",
     "/api/zalo/send",
+    "/api/internal-notifications/send",
     "/api/files",
     "/api/operations/backup",
   ])

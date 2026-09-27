@@ -126,7 +126,7 @@ export function readScope(
   if (module === "zaloMessages")
     return {
       clause:
-        "(owner_id=$2 or data->'recipientIds' ? $2 or data->>'recipientType'='ALL' or (data->>'recipientType'='DEPARTMENT' and data->>'department'=$3))",
+        "(owner_id=$2 or (coalesce(data->>'status','')<>'SCHEDULED' and (data->'recipientIds' ? $2 or (coalesce(data->>'channel','')<>'IN_APP' and (data->>'recipientType'='ALL' or (data->>'recipientType'='DEPARTMENT' and data->>'department'=$3))))))",
       params: [user.id, user.department],
     };
   return { clause: "owner_id=$2", params: [user.id] };

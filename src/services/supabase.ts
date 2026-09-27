@@ -163,9 +163,12 @@ export function subscribeToCollection<T>(
     )
     .subscribe();
   void refresh();
+  // Internal schedules also dispatch on reads, including when Cloud Run's background worker is off.
+  const inboxTimer = module === 'zaloMessages' ? setInterval(refresh, 30000) : undefined;
   return () => {
     active = false;
     clearTimeout(timer);
+    if (inboxTimer) clearInterval(inboxTimer);
     void supabase.removeChannel(channel);
   };
 }

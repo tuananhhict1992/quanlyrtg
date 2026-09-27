@@ -1,6 +1,6 @@
 # Hướng dẫn đưa hệ thống RTG vào hoạt động
 
-Ngày cập nhật: 26/09/2026. Project đã chọn: **quanlyrtghict — utcpdfiyaqnimdasttak**.
+Ngày cập nhật: 27/09/2026. Project đã chọn: **quanlyrtghict — utcpdfiyaqnimdasttak**.
 
 **Web chính thức:** [Mở hệ thống RTG](https://quanlyrtg-290449474780.asia-southeast1.run.app/). Đăng nhập Google đã được kiểm chứng với admin `tuananh.hict1992@gmail.com`; đăng nhập email/mật khẩu Supabase vẫn được giữ.
 
@@ -244,6 +244,6 @@ Google OAuth đã chuyển sang In production ngày 26/09/2026 theo xác nhận 
     Khi báo lỗi, gửi thao tác, thời điểm, thông báo lỗi và job ID nếu có; che token, mật khẩu, khóa và thông tin cá nhân không cần thiết.
 
 Chi tiết phạm vi kiểm chứng và giới hạn hiện tại: [PRODUCTION_CHECK.md](PRODUCTION_CHECK.md).
-# Thông báo Zalo — cập nhật 27/09/2026
+# Thông báo nội bộ — cập nhật 27/09/2026
 
-Website chính thức đã có trung tâm **Thông báo Zalo** cho cá nhân/Ca/tập thể, nối với vi phạm, giao bài và phép. Quy trình tạo OA, liên kết UID, Preview/Confirm và xử lý lỗi nằm trong [HUONG_DAN_ZALO.md](HUONG_DAN_ZALO.md). Hiện chưa cấu hình OA nên chưa gửi tin thật. Bản Cloud Run đã kiểm tra: `quanlyrtg-00005-bvc` (27/09/2026), 100% lưu lượng.
+Theo yêu cầu, khôi phục hộp thư và chat nhanh; thông báo vi phạm, giao bài, phép gửi vào ứng dụng. Kênh gửi Zalo đã ngừng ở server. Không cần tạo OA. Xem [HUONG_DAN_THONG_BAO_NOI_BO.md](HUONG_DAN_THONG_BAO_NOI_BO.md).

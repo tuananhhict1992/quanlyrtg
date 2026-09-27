@@ -2,6 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { pool, transaction, HttpError, asyncRoute } from "./db";
 import { stageEmbeddedFiles } from "./embedded-files";
+import { scheduledMaintenance } from "./scheduler";
 import {
   MODULE_PERMISSIONS,
   SHEET_TABS,
@@ -171,6 +172,7 @@ recordsRouter.get(
       cursor = String(req.query.cursor || "");
     const scope = readScope(req.user, module),
       params = [module, ...scope.params, cursor, limit + 1];
+    if (module === "zaloMessages" && !cursor) await scheduledMaintenance(true);
     const result = await pool.query(
       `select id,data from private.records where module=$1 and (${scope.clause}) and id>$${params.length - 1} order by id limit $${params.length}`,
       params,

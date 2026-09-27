@@ -102,7 +102,7 @@ interface QuizViewProps {
   onAddQuiz?: (quiz: Quiz) => Promise<void>;
   onEditQuiz?: (quiz: Quiz) => void;
   onDeleteQuiz?: (id: string) => void;
-  onAssignQuiz?: (quizId: string, recipientIds: string[], scope?: {recipientType: 'INDIVIDUAL' | 'DEPARTMENT' | 'ALL'; department?: string}) => Promise<void>;
+  onAssignQuiz?: (quizId: string, recipientIds: string[]) => Promise<void>;
   initialAiFile?: { name: string; blob?: Blob } | null;
   onClearInitialAiFile?: () => void;
   onBackToDashboard?: () => void;
@@ -363,7 +363,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
     setIsAssigning(true);
     setQuizActionError('');
     try {
-      await onAssignQuiz(createdQuizId, recipients, {recipientType: assignType, department: assignType === 'DEPARTMENT' ? assignTarget : undefined});
+      await onAssignQuiz(createdQuizId, recipients);
       setShowAssignModal(false);
       setActiveTab('LIST');
     } catch (error) {
@@ -1800,7 +1800,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                 disabled={isAssigning || !onAssignQuiz}
                 className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700"
               >
-                {isAssigning ? 'Đang giao bài...' : 'Giao bài & soạn Zalo'}
+                {isAssigning ? 'Đang giao bài...' : 'Giao bài & Gửi thông báo'}
               </button>
             </div>
           </div>
