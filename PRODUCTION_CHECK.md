@@ -77,3 +77,10 @@ Kiểm tra local đạt: typecheck, production build, migrations (14 bảng ứn
 - Typecheck, build và 11/11 kiểm thử Chrome đạt trên bốn kích thước 390/768/1366/1920px. Không có migration mới hoặc thay đổi backend. Xem UI_GUIDE.md.
 - Bổ sung kiểm thử thứ 12 cho đóng gói logo: giả lập PNG public bị 404, xác nhận ảnh nhúng giải mã đủ 4000×3000 và SHA-256 khớp ảnh nguồn. Typecheck/build và kiểm thử này đạt sau sửa. Logo được tải qua module lazy để trình nhập ZIP của AI Studio không bỏ mất ảnh; byte gốc giữ nguyên.
 - Đã triển khai revision `quanlyrtg-00008-kl4` lúc 11:21:06 (UTC+7), ngày 27/09/2026, nhận 100% lưu lượng. Trên website chính đã xác nhận logo gốc hiện đúng, dashboard tại 390px và 1366px không tràn ngang, mở/đóng menu mobile hoạt động; không ghi nhận lỗi console trong lượt kiểm tra. Bằng chứng nằm ở artifacts/screenshots/hict-live-mobile-20260927.png và hict-live-desktop-20260927.png. Không gửi thông báo hoặc sửa dữ liệu thật để kiểm thử.
+
+## Điều chỉnh ưu tiên dashboard — 27/09/2026
+
+- Đưa Thông báo và Truy cập nhanh lên đầu trang, trước tiêu đề Tổng quan vận hành và các số liệu. Thay đổi thứ tự DOM để trình đọc màn hình và bàn phím đi theo đúng thứ tự hiển thị.
+- Sáu nút nhanh dùng các nền màu riêng và biểu tượng màu đậm; Thông tin của tôi dùng xanh HICT. Tương phản chữ chính/nền ở trạng thái mặc định từ 4,86:1 đến 5,88:1. Giữ nguyên callback, liên kết cấu hình và quyền truy cập.
+- Typecheck, production build và 4/4 kiểm thử Chrome responsive đạt ở 390/768/1366/1920px. Đã xem ảnh desktop/mobile; không thay backend, dữ liệu hay schema. Cảnh báo kích thước chunk vẫn như bản trước.
+- Đã xuất bản revision `quanlyrtg-00009-h8g` lúc 13:15:01 (UTC+7), nhận 100% lưu lượng. Xác nhận trực quan trên website chính: hai khung ở đầu, sáu nút màu và nút hồ sơ hiện đúng, logo HICT giữ nguyên; không có lỗi console trong lượt kiểm tra. Ảnh: artifacts/screenshots/quick-access-live-20260927.png.
