@@ -158,6 +158,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="space-y-6 hict-dashboard">
+      <div className="hict-dashboard-columns">
+        <section className="hict-panel p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+            <h2 className="hict-section-title"><BellRing size={18} />{announcementTitle}</h2>
+            {isAdmin && <button id="dash-edit-announcement-btn" type="button" onClick={() => {setAnnouncementTitleInput(announcementTitle);setAnnouncementContentInput(announcementContent);setIsEditAnnouncementOpen(true);}} className="hict-button hict-button-quiet"><Edit3 size={14} />Cập nhật thông báo</button>}
+          </div>
+          <p className="hict-announcement">{announcementContent}</p>
+          {appSettings?.announcementUpdatedAt && <p className="text-[10px] text-slate-400 mt-4">Cập nhật {new Date(appSettings.announcementUpdatedAt).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})}{appSettings.announcementUpdatedBy ? ' · '+appSettings.announcementUpdatedBy : ''}</p>}
+        </section>
+        <section className="hict-panel p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+            <h2 className="hict-section-title"><ExternalLink size={18} />Truy cập nhanh</h2>
+            {isAdmin && <button id="dash-edit-quick-links-btn" type="button" onClick={() => {setSaveLinksSuccess(null);setIsEditLinksOpen(true);}} className="hict-button hict-button-quiet"><Settings2 size={14} />Cài đặt liên kết (Admin)</button>}
+          </div>
+          <div className="hict-quick-grid">
+            <button id="dash-quick-search-btn" type="button" className="hict-quick-link hict-quick-blue" onClick={() => handleOpenQuickLink(appSettings?.traCuuLink,'Tra Cứu')}><Search /><strong>Tra cứu</strong><span>Liên kết nội bộ</span></button>
+            <button id="dash-quick-library-btn" type="button" className="hict-quick-link hict-quick-teal" onClick={() => handleOpenQuickLink(appSettings?.libraryLink || appSettings?.nqQdDriveLink,'Thư Viện')}><BookOpen /><strong>Thư viện</strong><span>Quy chế & tài liệu</span></button>
+            <button id="dash-quick-vehicle-btn" type="button" className="hict-quick-link hict-quick-amber" onClick={() => handleOpenQuickLink(appSettings?.vehicleStatusLink,'Tình trạng Phương tiện')}><Truck /><strong>Phương tiện</strong><span>Tình trạng kỹ thuật</span></button>
+            <button id="dash-quick-engine-roof-btn" type="button" className="hict-quick-link hict-quick-orange" onClick={() => handleOpenQuickLink(appSettings?.engineRoofIncidentLink,'Nổ máy/ Thủng nóc')}><Flame /><strong>Nổ máy / Thủng nóc</strong><span>Sự cố thiết bị & vỏ</span></button>
+            <button id="dash-quick-violation-btn" type="button" className="hict-quick-link hict-quick-rose" onClick={() => handleOpenQuickLink(appSettings?.violationReportLink,'Vi phạm')}><ShieldCheck /><strong>Vi phạm & sự cố</strong><span>Báo cáo & theo dõi</span></button>
+            <button id="dash-quick-quiz-btn" type="button" className="hict-quick-link hict-quick-violet" onClick={() => {if(appSettings?.quizLink?.trim())window.open(appSettings.quizLink.trim(),'_blank','noopener,noreferrer');else setActiveTab('quiz');}}><GraduationCap /><strong>Kiểm tra</strong><span>Đánh giá năng lực</span></button>
+          </div>
+          <button id="dash-quick-userinfo-btn" type="button" onClick={() => setShowUserInfo(true)} className="hict-button hict-quick-profile w-full mt-3"><User size={15} />Thông tin của tôi<ArrowRight size={14} className="ml-auto" /></button>
+        </section>
+      </div>
       <div className="hict-page-heading">
         <div><div className="hict-eyebrow">HICT · Không gian điều hành</div><h1>Tổng quan vận hành</h1><p>Nhân sự, thông báo và công việc hằng ngày của Tổ RTG.</p></div>
         <div className="hict-date"><Calendar size={15} />{new Intl.DateTimeFormat('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'Asia/Ho_Chi_Minh'}).format(new Date())}</div>
@@ -239,31 +264,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </button>
       </div>
 
-      <div className="hict-dashboard-columns">
-        <section className="hict-panel p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-            <h2 className="hict-section-title"><BellRing size={18} />{announcementTitle}</h2>
-            {isAdmin && <button id="dash-edit-announcement-btn" type="button" onClick={() => {setAnnouncementTitleInput(announcementTitle);setAnnouncementContentInput(announcementContent);setIsEditAnnouncementOpen(true);}} className="hict-button hict-button-quiet"><Edit3 size={14} />Cập nhật thông báo</button>}
-          </div>
-          <p className="hict-announcement">{announcementContent}</p>
-          {appSettings?.announcementUpdatedAt && <p className="text-[10px] text-slate-400 mt-4">Cập nhật {new Date(appSettings.announcementUpdatedAt).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})}{appSettings.announcementUpdatedBy ? ' · '+appSettings.announcementUpdatedBy : ''}</p>}
-        </section>
-        <section className="hict-panel p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-            <h2 className="hict-section-title"><ExternalLink size={18} />Truy cập nhanh</h2>
-            {isAdmin && <button id="dash-edit-quick-links-btn" type="button" onClick={() => {setSaveLinksSuccess(null);setIsEditLinksOpen(true);}} className="hict-button hict-button-quiet"><Settings2 size={14} />Cài đặt liên kết (Admin)</button>}
-          </div>
-          <div className="hict-quick-grid">
-            <button id="dash-quick-search-btn" type="button" className="hict-quick-link" onClick={() => handleOpenQuickLink(appSettings?.traCuuLink,'Tra Cứu')}><Search /><strong>Tra cứu</strong><span>Liên kết nội bộ</span></button>
-            <button id="dash-quick-library-btn" type="button" className="hict-quick-link" onClick={() => handleOpenQuickLink(appSettings?.libraryLink || appSettings?.nqQdDriveLink,'Thư Viện')}><BookOpen /><strong>Thư viện</strong><span>Quy chế & tài liệu</span></button>
-            <button id="dash-quick-vehicle-btn" type="button" className="hict-quick-link" onClick={() => handleOpenQuickLink(appSettings?.vehicleStatusLink,'Tình trạng Phương tiện')}><Truck /><strong>Phương tiện</strong><span>Tình trạng kỹ thuật</span></button>
-            <button id="dash-quick-engine-roof-btn" type="button" className="hict-quick-link" onClick={() => handleOpenQuickLink(appSettings?.engineRoofIncidentLink,'Nổ máy/ Thủng nóc')}><Flame /><strong>Nổ máy / Thủng nóc</strong><span>Sự cố thiết bị & vỏ</span></button>
-            <button id="dash-quick-violation-btn" type="button" className="hict-quick-link" onClick={() => handleOpenQuickLink(appSettings?.violationReportLink,'Vi phạm')}><ShieldCheck /><strong>Vi phạm & sự cố</strong><span>Báo cáo & theo dõi</span></button>
-            <button id="dash-quick-quiz-btn" type="button" className="hict-quick-link" onClick={() => {if(appSettings?.quizLink?.trim())window.open(appSettings.quizLink.trim(),'_blank','noopener,noreferrer');else setActiveTab('quiz');}}><GraduationCap /><strong>Kiểm tra</strong><span>Đánh giá năng lực</span></button>
-          </div>
-          <button id="dash-quick-userinfo-btn" type="button" onClick={() => setShowUserInfo(true)} className="hict-button w-full mt-3"><User size={15} />Thông tin của tôi<ArrowRight size={14} className="ml-auto" /></button>
-        </section>
-      </div>
       {isAdmin && onOpenMasterSync && <section className="hict-report-strip">
         <div className="flex items-center gap-3"><span className="w-10 h-10 rounded-xl bg-white text-blue-600 flex items-center justify-center shrink-0"><FileSpreadsheet size={20} /></span><div><h2 className="hict-section-title">Báo cáo Google</h2><p>Đồng bộ báo cáo nhân sự, vi phạm, kiểm tra, góp ý, bình xét và nghỉ phép.</p></div></div>
         <button id="dash-admin-master-sync-btn" type="button" onClick={onOpenMasterSync} className="hict-button"><FileSpreadsheet size={15} />Đẩy dữ liệu ngay<ArrowRight size={14} /></button>

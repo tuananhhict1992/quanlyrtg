@@ -9,7 +9,7 @@ Cập nhật 27/09/2026. Các quy tắc dùng chung nằm ở src/index.css; log
 - Logo tại public/brand/hict-logo.png là bản sao nguyên vẹn NĂM.png do người dùng cung cấp, SHA-256 79ddc19566aa5111bc74bfbe596c2c24f4304580fd7210ece2c66e71135891d5. Component hiển thị vùng có hình bằng SVG viewBox, không thay màu hay kéo méo artwork.
 - UserAvatar dùng chữ viết tắt khi không có ảnh hoặc ảnh tải lỗi, không tạo ảnh chân dung giả.
 - Thanh menu thu gọn trên mobile; Escape đóng menu và menu tài khoản. Nút điều hướng có aria-current. Hiệu ứng tôn trọng prefers-reduced-motion.
-- Tổng quan ưu tiên số liệu, thông báo, lối tắt rồi các báo cáo. Chức năng, quyền truy cập và luồng nghiệp vụ tiếp tục dùng cơ chế hiện có.
+- Dashboard ưu tiên hai khung Thông báo và Truy cập nhanh ở đầu; tiêu đề Tổng quan vận hành và các số liệu nằm bên dưới, tiếp đến các báo cáo. Nút truy cập nhanh dùng nền màu nhạt, biểu tượng màu đậm theo từng nhóm: xanh dương/tra cứu, xanh ngọc/thư viện, vàng/phương tiện, cam/sự cố thiết bị, hồng/vi phạm và tím/kiểm tra. Nút Thông tin của tôi dùng xanh HICT. Chức năng, quyền truy cập và luồng nghiệp vụ tiếp tục dùng cơ chế hiện có.
 - Không thay schema, RLS, xác thực hoặc dữ liệu nhân sự trong lần cập nhật này.
 
 Logo được đóng gói dưới dạng module lazy tại src/assets/hict để AI Studio vẫn xuất bản đúng ảnh khi trình nhập ZIP bỏ qua file nhị phân public. Chạy node scripts/embed-brand-logo.mjs sau khi thay ảnh nguồn. Các phần base64 chứa nguyên byte PNG, được tải một lần và dùng chung cho logo/favicon; không nằm trong bundle chính.

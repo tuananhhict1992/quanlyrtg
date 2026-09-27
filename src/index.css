@@ -418,16 +418,20 @@ main {
   gap: 10px;
 }
 .hict-quick-link {
+  --quick-accent: #006eae;
+  --quick-bg: #e7f3ff;
+  --quick-hover: #d8eaff;
+  --quick-border: #bfdcff;
   min-width: 0;
-  min-height: 92px;
+  min-height: 108px;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   flex-direction: column;
   gap: 6px;
   text-align: left;
-  background: #f7fafc;
-  border: 1px solid #e5edf3;
+  background: var(--quick-bg);
+  border: 1px solid var(--quick-border);
   border-radius: 12px;
   padding: 12px;
   transition:
@@ -435,22 +439,65 @@ main {
     border-color 0.15s;
 }
 .hict-quick-link:hover {
-  background: #eef8fd;
-  border-color: #a7d4eb;
+  background: var(--quick-hover);
+  border-color: var(--quick-accent);
 }
 .hict-quick-link svg {
-  width: 18px;
-  height: 18px;
-  color: #0781bd;
+  width: 32px;
+  height: 32px;
+  padding: 7px;
+  border-radius: 9px;
+  color: #fff;
+  background: var(--quick-accent);
+  flex-shrink: 0;
 }
 .hict-quick-link strong {
-  color: #29485f;
-  font-size: 11px;
+  color: var(--quick-accent);
+  font-size: 12px;
   font-weight: 700;
 }
 .hict-quick-link span {
-  color: #708698;
-  font-size: 10px;
+  color: #52637a;
+  font-size: 11px;
+}
+.hict-quick-teal {
+  --quick-accent: #08735b;
+  --quick-bg: #e3f7f1;
+  --quick-hover: #d0f0e5;
+  --quick-border: #afe3d3;
+}
+.hict-quick-amber {
+  --quick-accent: #8a5200;
+  --quick-bg: #fff2d5;
+  --quick-hover: #ffe8b5;
+  --quick-border: #f0d28c;
+}
+.hict-quick-orange {
+  --quick-accent: #a43f15;
+  --quick-bg: #ffeadf;
+  --quick-hover: #ffdac5;
+  --quick-border: #f1bea4;
+}
+.hict-quick-rose {
+  --quick-accent: #a42a50;
+  --quick-bg: #fce7ed;
+  --quick-hover: #f9d2df;
+  --quick-border: #edb8cb;
+}
+.hict-quick-violet {
+  --quick-accent: #6343bb;
+  --quick-bg: #eee9fd;
+  --quick-hover: #e2d8fc;
+  --quick-border: #cfc0f3;
+}
+.hict-quick-profile {
+  color: #075b91;
+  background: #eaf5fc;
+  border-color: #bfdff1;
+}
+.hict-quick-profile:hover {
+  background: #daedfa;
+  border-color: #006eae;
 }
 .hict-metrics {
   display: grid;
