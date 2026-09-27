@@ -7,6 +7,20 @@ import {pool} from '../backend/db';
 import {confirmIncidents,discardIncidentDrafts} from '../backend/incidents';
 import {recordsRouter,writeRecord} from '../backend/records';
 import {operationsRouter} from '../backend/operations';
+import * as XLSX from 'xlsx';
+import {parseExcelViolationsFile} from '../src/services/violationParserService';
+
+test('incident Excel extraction excludes other teams and normalizes the RTG employee name',()=>{
+  const employee:any={id:'e1',fullName:'Phạm Ngọc Tuân',department:'RTG ca 1',employeeCode:'RTG1',position:'Lái cẩu RTG'};
+  const workbook=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook,XLSX.utils.aoa_to_sheet([
+    ['STT','Thời gian','Diễn biến vụ việc','Hậu quả','Nguyên nhân','Trách nhiệm','Đơn vị quản lý','Biện pháp xử lý','Phân loại'],
+    [1,'27/09/2026','Phạm Ngọc Tuấn vận hành RTG 01','Sự cố','Thiếu quan sát','Phạm Ngọc Tuấn','Tổ RTG','Nhắc nhở','Sự cố'],
+    [2,'27/09/2026','Phạm Ngọc Tuấn chứng kiến sự cố đầu kéo','Sự cố','Thiếu quan sát','Nhân viên khác','Tổ Đầu kéo','Nhắc nhở','Sự cố'],
+  ]),'Phụ lục 1');
+  const report=parseExcelViolationsFile(workbook,[employee]);
+  assert.equal(report.items.length,1);assert.equal(report.items[0].violatorName,'Phạm Ngọc Tuân');
+});
 
 test('incident confirmation is atomic, idempotent, visible to permitted viewers, and drafts stay private',async()=>{
   const db=await testDatabase(), savedQuery=pool.query,savedConnect=pool.connect;

@@ -336,7 +336,7 @@ export interface DetectedViolator {
 /**
  * Lấy danh sách gộp ứng viên nhân viên hệ thống (kết hợp cả state và INITIAL_EMPLOYEES)
  */
-function getSystemCandidates(systemEmployees: Employee[]): Employee[] { return systemEmployees; }
+function getSystemCandidates(systemEmployees: Employee[]): Employee[] { return systemEmployees.filter(employee=>/rtg|cau khung/i.test(removeVietnameseTones(employee.department || ''))); }
 
 /**
  * =========================================================================
@@ -684,6 +684,10 @@ export function parseExcelViolationsFile(
       if (!progressionVal.trim() && !causeVal.trim() && !violatorVal.trim()) continue;
 
       const fullRowText = row.map((c) => String(c || '')).join(' ');
+      if (!isRtgRelatedIncident(deptVal, fullRowText, violatorVal, equipVal)) {
+        nonRtgIgnoredCount++;
+        continue;
+      }
 
       // QUY TẮC LỌC 1: Khớp tên nhân sự (Điều kiện tiên quyết)
       // Rà soát các cột liên quan đến nhân sự. Chỉ giữ lại vụ việc trùng khớp chính xác nhân viên hệ thống.
@@ -813,6 +817,7 @@ export function parseRawTextViolations(
       }
 
       const fullText = `${line} ${progression} ${cause} ${corrective}`;
+      if (!isRtgRelatedIncident(dept, fullText, violator)) {nonRtgIgnoredCount++;continue;}
       const detected = extractAllViolatorsFromRow(violator, fullText, systemEmployees);
       if (detected.length === 0) {
         nonRtgIgnoredCount++;
@@ -906,6 +911,7 @@ export function parseRawTextViolations(
         }
 
         const fullText = `${line} ${progression} ${cause} ${corrective}`;
+        if (!isRtgRelatedIncident(dept, fullText, violator)) {nonRtgIgnoredCount++;continue;}
         const detected = extractAllViolatorsFromRow(violator, fullText, systemEmployees);
         if (detected.length === 0) {
           nonRtgIgnoredCount++;
@@ -960,6 +966,7 @@ export function parseRawTextViolations(
     // 3. Xử lý đoạn văn bản tự do
     if (line.length > 15) {
       const finalEquip = extractEquipmentCode(line);
+      if (!isRtgRelatedIncident('', line, '', finalEquip)) {nonRtgIgnoredCount++;continue;}
       const detected = extractAllViolatorsFromRow('', line, systemEmployees);
       if (detected.length === 0) {
         nonRtgIgnoredCount++;

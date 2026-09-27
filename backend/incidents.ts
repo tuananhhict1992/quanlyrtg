@@ -56,7 +56,7 @@ export async function confirmIncidents(user: any, input: any, sourceJobId?: stri
         throw new HttpError(409,'Mã bản ghi thuộc vụ việc khác. Hãy tải lại bảng đối soát.');
       if (existing?.isSyncedToProfile === true) { items.push(existing); continue; }
       const saved: any = {id:existing?.id || 'inc-' + identity};
-      for (const key of ['code','time','location','what','why','how','equipment','severity','sourceAppendix','originalName']) saved[key]=item[key];
+      for (const key of ['code','time','location','what','why','how','equipment','severity','sourceAppendix','originalName','timeAndLocation','incidentProgression','consequence','cause','responsibility','managingUnit','correctiveAction','classification']) saved[key]=item[key];
       Object.assign(saved, {violatorName:employee.fullName, normalizedName:employee.fullName, matchedEmployeeId:employee.id, matchedEmployeeCode:employee.employeeCode, matchedDepartment:employee.department, department:employee.department,
         isMatchedWithSystem:true, isRtgRelated:true, isSyncedToProfile:true, importJobId:jobId, importChecksum:identity, importStatus:'success'});
       const records = employee.violationRecords || [];
