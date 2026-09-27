@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { pool, HttpError } from "./db";
 export function assertSessionPolicy(account: any, claims: any, path: string) {
   if (!account?.data || account.data.status !== 'ACTIVE') throw new HttpError(403, 'Tài khoản chưa được cấp quyền hoặc đã bị khóa.');
+  if (!account.session_created_at) throw new HttpError(401, 'Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.');
   if (account.data.role !== 'ADMIN' && !claims.amr?.some((method: any) => method.method === 'password'))
     throw new HttpError(403, 'Đăng nhập Google chỉ dành cho Admin. Vui lòng dùng tên đăng nhập và mật khẩu.');
   if (account.credentials_changed_at && (!account.session_created_at ||

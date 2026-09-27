@@ -90,8 +90,9 @@ test('username access, Admin-only provisioning/reset, idempotency, first passwor
 });
 
 test('Google Admin only, mandatory initial change, old refreshed sessions cannot access APIs', () => {
-  const account:any = { data:{role:'USER',status:'ACTIVE'},must_change_password:false };
+  const account:any = { data:{role:'USER',status:'ACTIVE'},must_change_password:false,session_created_at:'2026-09-27T06:00:00Z' };
   const password = {amr:[{method:'password'}]}, google = {amr:[{method:'oauth'}]};
+  assert.throws(()=>assertSessionPolicy({...account,session_created_at:null},password,'/me'),(e:any)=>e.status===401);
   assert.throws(()=>assertSessionPolicy(account,google,'/me'),(e:any)=>e.status===403);
   assert.doesNotThrow(()=>assertSessionPolicy({...account,data:admin},google,'/me'));
   assert.doesNotThrow(()=>assertSessionPolicy(account,password,'/records/employees'));
