@@ -84,3 +84,16 @@ Kiểm tra local đạt: typecheck, production build, migrations (14 bảng ứn
 - Sáu nút nhanh dùng các nền màu riêng và biểu tượng màu đậm; Thông tin của tôi dùng xanh HICT. Tương phản chữ chính/nền ở trạng thái mặc định từ 4,86:1 đến 5,88:1. Giữ nguyên callback, liên kết cấu hình và quyền truy cập.
 - Typecheck, production build và 4/4 kiểm thử Chrome responsive đạt ở 390/768/1366/1920px. Đã xem ảnh desktop/mobile; không thay backend, dữ liệu hay schema. Cảnh báo kích thước chunk vẫn như bản trước.
 - Đã xuất bản revision `quanlyrtg-00009-h8g` lúc 13:15:01 (UTC+7), nhận 100% lưu lượng. Xác nhận trực quan trên website chính: hai khung ở đầu, sáu nút màu và nút hồ sơ hiện đúng, logo HICT giữ nguyên; không có lỗi console trong lượt kiểm tra. Ảnh: artifacts/screenshots/quick-access-live-20260927.png.
+
+## Đối chiếu cấu hình Google — 27/09/2026
+
+- Kết nối OAuth primary vẫn thuộc admin đã liên kết, có refresh token mã hóa; truy vấn kiểm tra chỉ lấy email/ID kho và trạng thái có token, không lấy token.
+- Đã lưu trong AI Studio Secrets: GOOGLE_OAUTH_ALLOWED_ORIGINS dùng chính origin run.app hiện tại; GOOGLE_DRIVE_ROOT_ID và GOOGLE_SPREADSHEET_ID khớp kho trong private.google_connections. Giữ RUN_SYNC_WORKER=false và PUBLIC_APP_URL hiện có. GOOGLE_CLIENT_EMAIL / GOOGLE_PRIVATE_KEY không áp dụng cho OAuth, không tạo thêm Service Account.
+- Cloud Run revision quanlyrtg-00010-jmf lúc 13:28:26 (UTC+7) đã nhận 100% lưu lượng. Trên web chính, đăng nhập phân hệ Drive thành công và đọc được RTG_ARCHIVE cùng 10 thư mục con. Không tạo/xóa file hoặc thay dữ liệu nghiệp vụ để kiểm thử. Ảnh kiểm chứng: artifacts/screenshots/google-config-verified-20260927.png.
+
+## Địa chỉ truy cập ngắn — 27/09/2026
+
+- Đổi alias AI Studio thành https://quanlyrtg.ai.studio/ theo yêu cầu rút gọn. Alias quanlyrtg-hict.ai.studio đã được thay thế; không quảng bá hoặc dùng alias cũ làm redirect. Không thay DNS của hict.com/hict.net.vn.
+- Revision `quanlyrtg-00011-5wl` lúc 13:36:18 (UTC+7) nhận 100% lưu lượng. Đã mở HTTPS alias mới, đăng nhập Google bằng tài khoản admin có sẵn và quay về đúng origin mới; dashboard tải được dữ liệu, không có lỗi console trong lượt kiểm tra.
+- Supabase Site URL là https://quanlyrtg.ai.studio. Redirect allowlist có đúng origin mới và origin run.app hiện tại, mỗi origin có dạng không dấu / và có dấu / cuối; không thêm wildcard. PUBLIC_APP_URL của kết nối kho vẫn giữ run.app đã đăng ký với Google, giữ Client ID/Secret và kho hiện có.
+- Ảnh: artifacts/screenshots/short-url-live-20260927.png. Các thay đổi local lần này chỉ là tài liệu và chú thích .env.example; không cần migration hoặc build lại mã nghiệp vụ.

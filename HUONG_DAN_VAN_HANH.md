@@ -2,13 +2,13 @@
 
 Ngày cập nhật: 27/09/2026. Project đã chọn: **quanlyrtghict — utcpdfiyaqnimdasttak**.
 
-**Web chính thức:** [Mở hệ thống RTG](https://quanlyrtg-290449474780.asia-southeast1.run.app/). Đăng nhập Google đã được kiểm chứng với admin `tuananh.hict1992@gmail.com`; đăng nhập email/mật khẩu Supabase vẫn được giữ.
+**Địa chỉ ngắn chính thức:** [quanlyrtg.ai.studio](https://quanlyrtg.ai.studio/). Đã kiểm chứng HTTPS và đăng nhập Google với admin `tuananh.hict1992@gmail.com` trên địa chỉ mới; đăng nhập email/mật khẩu Supabase vẫn được giữ. Đường [run.app dự phòng](https://quanlyrtg-290449474780.asia-southeast1.run.app/) tiếp tục hoạt động. Alias cũ đã được thay thế, hãy cập nhật bookmark.
 
 Google OAuth đã được cấu hình trong Supabase và AI Studio Secrets. Kho đã liên kết với `tuananh.hict1992@gmail.com`: [RTG_SYSTEM](https://drive.google.com/drive/folders/1qzDLF2Obxkk7OvxI-feAoecF8q38wCEH) có đủ 10 thư mục; [RTG_ARCHIVE](https://docs.google.com/spreadsheets/d/1uXT_ON2PjFPFO04whDJ9Poy3mCebtbXK4cI9RdMliF0/edit) có đủ 11 tab yêu cầu. Đã xử lý 82 tác vụ thành công, gồm báo cáo nhân sự/vi phạm và ba file lưu trữ, bao gồm Backup JSON. Đã kiểm chứng file chỉ bị xóa khỏi vùng tạm sau khi Drive trả ID và metadata được lưu. Một file mới Preview, chưa Confirm vẫn được giữ chờ. PostgreSQL tiếp tục là database chính.
 
 Mã nguồn đã có các luồng Supabase/Google và hai bản sửa bình xét, thông báo giao bài. Migration đã được áp dụng lên project `quanlyrtghict` (`utcpdfiyaqnimdasttak`), 12 bảng đều bật RLS và Realtime đã cấu hình. Admin được liên kết hồ sơ `RTG-ADMIN` (ADMIN, ACTIVE); Google đăng nhập vào chính tài khoản Auth đã có, không tạo hồ sơ admin trùng. Máy local hiện chưa có `.env`.
 
-Google Cloud hiện từ chối callback tên miền `quanlyrtg-hict.ai.studio`. Khi kết nối lại kho, sử dụng địa chỉ `run.app` ở đầu tài liệu; nút kết nối trên tên miền khác sẽ mở địa chỉ chính thức. Callback đã đăng ký: Supabase `/auth/v1/callback` và web chính `/api/google/oauth/callback`. Không thêm wildcard hoặc dùng tên miền preview làm callback.
+Kết nối lại kho Google tiếp tục dùng địa chỉ `run.app` đã đăng ký làm PUBLIC_APP_URL; nút kết nối trên alias sẽ mở địa chỉ đó. Đăng nhập người dùng qua Google/Supabase đã quay về đúng alias mới. Supabase Site URL là https://quanlyrtg.ai.studio; redirect allowlist giữ chính xác origin mới và origin run.app (có và không dấu / cuối). Callback phía Google vẫn là Supabase `/auth/v1/callback` và run.app `/api/google/oauth/callback`. Không thêm wildcard hoặc dùng tên miền preview làm callback.
 
 Google OAuth đã chuyển sang In production ngày 26/09/2026 theo xác nhận của chủ tài khoản. Trang quyền riêng tư được công bố tại `/privacy`. Tài khoản Google chỉ được vào dữ liệu RTG khi hồ sơ Supabase đã liên kết và được cấp quyền; Publish OAuth không tự cấp vai trò nhân viên. Đã kết nối lại kho sau khi rời Testing lúc 16:57 ngày 26/09/2026; refresh token mới được lưu mã hóa, thư mục và bảng báo cáo cũ được giữ nguyên.
 
@@ -124,7 +124,7 @@ Google OAuth đã chuyển sang In production ngày 26/09/2026 theo xác nhận 
 
 7. **Kết nối Google Drive và Google Sheets**
 
-   Bản cập nhật hỗ trợ OAuth của admin cho Gmail cá nhân. Drive API và Sheets API đã bật trong project `gen-lang-client-0409878770`; cấu hình OAuth client và cấp quyền kho còn chờ hoàn tất. Đăng nhập Google qua Supabase và cấp quyền kho Drive là hai bước riêng. Nhân viên đăng nhập không phải cấp quyền Drive.
+   RTG hiện dùng OAuth của admin `tuananh.hict1992@gmail.com`. Drive API và Sheets API đã bật trong project `gen-lang-client-0409878770`; kết nối kho đã hoàn tất và Audience đã chuyển sang Production. Đăng nhập Google qua Supabase và cấp quyền kho Drive là hai bước riêng. Nhân viên đăng nhập không phải cấp quyền Drive.
 
    Tạo OAuth client loại **Web application**, origin `https://quanlyrtg-290449474780.asia-southeast1.run.app`, với hai redirect URI chính xác:
 
@@ -138,6 +138,10 @@ Google OAuth đã chuyển sang In production ngày 26/09/2026 theo xác nhận 
    Republish bản cập nhật. Đăng nhập admin trên website chính thức, vào **Phân quyền → Google Sync → Kết nối Google Drive**. Chọn đúng email admin đã liên kết, đồng ý quyền `drive.file` và truy cập offline. RTG tự tạo thư mục **RTG_SYSTEM**, Spreadsheet **RTG_ARCHIVE**, các thư mục con và tab bên dưới. Không cần nhập folder ID/spreadsheet ID cho phương án OAuth.
 
    Refresh token được mã hóa AES-256-GCM trong `private.google_connections`, client không được đọc bảng này. Không thay Client Secret tùy tiện: khóa này cũng dùng bảo vệ token đã lưu; khi thay cần kết nối lại Google. OAuth callback chỉ nhận phiên admin còn quyền, kiểm tra state, PKCE, hạn 10 phút và đúng email. Kho đã liên kết không tự chuyển sang Google account khác.
+
+   **Các ô cấu hình trống khi dùng OAuth:** `GOOGLE_CLIENT_EMAIL` và `GOOGLE_PRIVATE_KEY` thuộc phương án Service Account bên dưới, không điền email Gmail hoặc khóa giả vào hai ô này. `GOOGLE_OAUTH_ALLOWED_ORIGINS` là danh sách origin HTTPS chính xác; chỉ dùng origin đã được phép làm callback của OAuth client. Origin chính trong `PUBLIC_APP_URL` luôn được chấp nhận. ID kho thật nằm trong `private.google_connections`; nếu lưu thêm `GOOGLE_DRIVE_ROOT_ID` / `GOOGLE_SPREADSHEET_ID` ở Secrets thì phải khớp kho đó, và OAuth vẫn lấy ID từ database. Không tạo kho hoặc Service Account thứ hai chỉ để điền đủ ô.
+
+   **Phân vai lưu trữ:** Supabase là dữ liệu nghiệp vụ chính và metadata file; Drive giữ tệp; Sheets nhận bản xuất lịch sử/báo cáo. Sửa Sheet không tự thay dữ liệu nghiệp vụ. Bản sao báo cáo là chủ đích, không phải một database chính khác.
 
    Khi Google Auth Platform còn ở chế độ Testing, thêm email admin vào Test users. Token offline có thể hết hạn sau 7 ngày với quyền Drive; hoàn tất cấu hình audience/consent phù hợp trước vận hành dài hạn. Không mở quyền đọc toàn bộ Drive chỉ để bỏ lỗi consent. [Vòng đời refresh token của Google](https://developers.google.com/identity/protocols/oauth2#expiration).
 
