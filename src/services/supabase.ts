@@ -185,6 +185,8 @@ export function subscribeToCollection<T>(
   // Every account subscribes; bounded fallback also covers a temporarily unavailable WebSocket.
   const fallbackTimer = setInterval(() => {if(document.visibilityState!=='hidden')schedule();}, (module === 'zaloMessages' ? 30000 : 60000) + Math.random() * 10000);
   const resume = () => { if (Date.now() - lastSuccess >= 30000) schedule(); };
+  const changed = (event:Event) => {if((event as CustomEvent).detail===module)schedule();};
+  window.addEventListener('rtg:records-changed',changed);
   window.addEventListener('online',resume);
   window.addEventListener('focus',resume);
   return () => {
@@ -194,6 +196,7 @@ export function subscribeToCollection<T>(
     clearInterval(fallbackTimer);
     window.removeEventListener('online',resume);
     window.removeEventListener('focus',resume);
+    window.removeEventListener('rtg:records-changed',changed);
     unsubscribe();
   };
 }

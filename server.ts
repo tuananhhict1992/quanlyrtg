@@ -273,7 +273,8 @@ Nhiệm vụ của bạn:
         text: `Hãy đọc tài liệu PDF này và tạo ra ${questionCount} câu hỏi trắc nghiệm theo chủ đề "${topic}".`,
       });
     } else {
-      const textToAnalyze = (fileText || "").slice(0, 30000); // safety length
+      const textToAnalyze = String(fileText || '');
+      if(textToAnalyze.length>30000)return res.status(400).json({error:'Tài liệu quá dài cho một lần biên soạn AI. Chia tài liệu nhỏ hơn hoặc chọn Nhập toàn bộ câu hỏi có sẵn để đọc bộ câu hỏi theo mẫu.'});
       contentsParts.push({
         text: `TÊN TÀI LIỆU: ${fileName}\nCHỦ ĐỀ: ${topic}\nSỐ LƯỢNG CÂU HỎI CẦN TẠO: ${questionCount}\n\nNỘI DUNG TÀI LIỆU:\n${textToAnalyze}\n\nHãy tạo các câu hỏi trắc nghiệm chất lượng cao từ nội dung trên.`,
       });

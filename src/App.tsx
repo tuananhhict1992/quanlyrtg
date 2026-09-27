@@ -1187,20 +1187,22 @@ export default function App() {
     }
   };
 
-  // Question Bank Updates
-  const handleUpdateQuestionBank = async (updatedList: QuizQuestion[]) => {
-    // Save any newly added or edited questions to questionBank collection
-    for (const q of updatedList) {
-      await saveDocument('questionBank', q.id, q);
-    }
-    setQuestionBank(updatedList);
+  const handleSaveBankQuestion = async (question:QuizQuestion) => {
+    const saved=await saveDocument<QuizQuestion>('questionBank',question.id,question,false);
+    setQuestionBank(previous=>[saved,...previous.filter(q=>q.id!==saved.id)]);
   };
-
-  const handleUpdateQuestionFolders = async (updatedFolders: QuestionFolder[]) => {
-    for (const f of updatedFolders) {
-      await saveDocument('questionFolders', f.id, f);
-    }
-    setQuestionFolders(updatedFolders);
+  const handleDeleteBankQuestion = async (id:string) => {
+    await deleteDocument('questionBank',id);
+    setQuestionBank(previous=>previous.filter(q=>q.id!==id));
+  };
+  const handleSaveQuestionFolder = async (folder:QuestionFolder) => {
+    await saveDocument('questionFolders',folder.id,folder,false);
+    setQuestionFolders(previous=>[...previous.filter(f=>f.id!==folder.id),folder]);
+  };
+  const handleDeleteQuestionFolder = async (id:string) => {
+    await deleteDocument('questionFolders',id);
+    setQuestionFolders(previous=>previous.filter(f=>f.id!==id));
+    setQuestionBank(previous=>previous.map(q=>q.folderId===id?{...q,folderId:undefined}:q));
   };
 
   const handleSaveAppSettings = async (newSettings: Partial<AppSettings>) => {
@@ -1699,9 +1701,11 @@ export default function App() {
             <QuizView
               quizzes={quizzes}
               questionBank={questionBank}
-              onUpdateQuestionBank={handleUpdateQuestionBank}
+              onSaveBankQuestion={handleSaveBankQuestion}
+              onDeleteBankQuestion={handleDeleteBankQuestion}
               questionFolders={questionFolders}
-              onUpdateQuestionFolders={handleUpdateQuestionFolders}
+              onSaveQuestionFolder={handleSaveQuestionFolder}
+              onDeleteQuestionFolder={handleDeleteQuestionFolder}
               submissions={submissions}
               currentUser={currentUser}
               allEmployees={employees}

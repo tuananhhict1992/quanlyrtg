@@ -1,3 +1,4 @@
+import { parseQuestionWorkbook, parseQuestionText } from './questionImport';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 import { QuizQuestion } from '../types';
@@ -100,92 +101,32 @@ Căn cứ: Điều 2, Quy trình Đăng ký Nghỉ phép (HD-01/2026/SOP-HR)
  * - base64 (if PDF)
  */
 export async function parseFileForQuestions(file: File | Blob, fileName: string): Promise<{
+  report?: import('./questionImport').QuestionImportReport;
   structuredQuestions?: QuizQuestion[];
   rawText?: string;
   base64?: string;
   mimeType: string;
 }> {
+  if(file.size>25*1024*1024)throw new Error('Tệp vượt giới hạn 25 MB.');
   const extension = fileName.split('.').pop()?.toLowerCase();
 
   // 1. EXCEL / CSV
   if (['xlsx', 'xls', 'csv'].includes(extension || '')) {
     const arrayBuffer = await file.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rows: any[] = XLSX.utils.sheet_to_json(sheet);
-
-    // Check if rows match standard template headers
-    const extractedFromTemplate: QuizQuestion[] = [];
-    let textDump = '';
-
-    rows.forEach((row, idx) => {
-      const qText =
-        row['Câu hỏi'] || row['Cau hoi'] || row['Question'] || row['Nội dung câu hỏi'];
-      const optA = row['Lựa chọn A'] || row['A'] || row['Option A'];
-      const optB = row['Lựa chọn B'] || row['B'] || row['Option B'];
-      const optC = row['Lựa chọn C'] || row['C'] || row['Option C'];
-      const optD = row['Lựa chọn D'] || row['D'] || row['Option D'];
-      const rawAns = (
-        row['Đáp án đúng (A/B/C/D)'] ||
-        row['Đáp án đúng'] ||
-        row['Dap an'] ||
-        row['Answer'] ||
-        'A'
-      )
-        .toString()
-        .trim()
-        .toUpperCase();
-      const expl = row['Giải thích'] || row['Giai thich'] || row['Explanation'] || '';
-      const cit = row['Căn cứ quy chế'] || row['Căn cứ'] || row['Can cu'] || '';
-
-      if (qText && optA && optB) {
-        const options = [
-          { id: `opt-a-${idx}`, text: String(optA) },
-          { id: `opt-b-${idx}`, text: String(optB) },
-        ];
-        if (optC) options.push({ id: `opt-c-${idx}`, text: String(optC) });
-        if (optD) options.push({ id: `opt-d-${idx}`, text: String(optD) });
-
-        let correctOptionId = options[0].id;
-        if (rawAns.includes('B') && options.length > 1) correctOptionId = options[1].id;
-        else if (rawAns.includes('C') && options.length > 2) correctOptionId = options[2].id;
-        else if (rawAns.includes('D') && options.length > 3) correctOptionId = options[3].id;
-
-        extractedFromTemplate.push({
-          id: `imp-${Date.now()}-${idx}`,
-          question: String(qText),
-          options,
-          correctOptionId,
-          explanation: String(expl),
-          citation: String(cit),
-        });
-      }
-
-      // Also create text dump in case AI fallback is needed
-      textDump += `Dòng ${idx + 1}: ${JSON.stringify(row)}\n`;
-    });
-
-    if (extractedFromTemplate.length > 0) {
-      return {
-        structuredQuestions: extractedFromTemplate,
-        rawText: textDump,
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      };
-    }
-
-    return {
-      rawText: textDump,
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    };
+    const report = parseQuestionWorkbook(workbook);
+    return {structuredQuestions:report.questions,report,rawText:workbook.SheetNames.map(name=>name+'\n'+XLSX.utils.sheet_to_csv(workbook.Sheets[name])).join('\n'),mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'};
   }
 
   // 2. WORD (.docx)
   if (['docx'].includes(extension || '')) {
     const arrayBuffer = await file.arrayBuffer();
     const result = await mammoth.extractRawText({ arrayBuffer });
+    const report=parseQuestionText(result.value);
     return {
       rawText: result.value,
+      structuredQuestions:report.questions,
+      report,
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     };
   }
@@ -206,9 +147,13 @@ export async function parseFileForQuestions(file: File | Blob, fileName: string)
   }
 
   // 4. PLAIN TEXT / MARKDOWN
+  if(extension==='doc')throw new Error('Định dạng Word cũ .doc chưa đọc trực tiếp được. Hãy lưu thành .docx rồi nhập lại.');
   const text = await file.text();
+  const report=parseQuestionText(text);
   return {
     rawText: text,
+    structuredQuestions:report.questions,
+    report,
     mimeType: 'text/plain',
   };
 }

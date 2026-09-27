@@ -250,6 +250,81 @@ async function authenticated(page: any, includeArchive = false, profile: any = a
     await route.fulfill({ json: body });
   });
 }
+test('Question bank imports all 386 questions atomically, retains failed review and deletes folders without resurrection',async({page})=>{
+  test.setTimeout(60000);
+  await page.setViewportSize({width:1366,height:900});await authenticated(page);
+  const bus=await realtimeBus(page), errors:string[]=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  let folders:any[]=[{id:'folder-test',name:'Bộ 386 câu',color:'indigo'}], questions:any[]=[], imports:any[]=[], puts=0,deletes=0;
+  await page.route('**/api/records/**',async route=>{
+    const req=route.request(),url=new URL(req.url()),path=url.pathname;
+    if(path==='/api/records/questionFolders/folder-test' && req.method()==='DELETE'){
+      deletes++;folders=[];questions=questions.map(q=>({...q,folderId:null}));return route.fulfill({json:{success:true}});
+    }
+    if(path.startsWith('/api/records/questionBank/') && req.method()==='PUT'){
+      puts++;const saved=req.postDataJSON().data;questions=questions.map(q=>q.id===saved.id?saved:q);return route.fulfill({json:saved});
+    }
+    if(path==='/api/records/questionFolders')return route.fulfill({json:{items:folders,nextCursor:null}});
+    if(path==='/api/records/questionBank'){
+      const cursor=url.searchParams.get('cursor')||'',items=questions.filter(q=>q.id>cursor).sort((a,b)=>a.id.localeCompare(b.id));
+      return route.fulfill({json:{items:items.slice(0,200),nextCursor:items.length>200?items[199].id:null}});
+    }
+    return route.fallback();
+  });
+  await page.route('**/api/operations/question-bank/import',async route=>{
+    const payload=route.request().postDataJSON();imports.push(payload);
+    if(imports.length===1)return route.fulfill({status:503,json:{error:'Giả lập chưa lưu được cả lô'}});
+    questions=payload.questions.map((q:any,i:number)=>({...q,id:'q-'+String(i).padStart(4,'0'),folderId:payload.folderId}));
+    return route.fulfill({json:{submitted:386,added:386,skipped:0,status:'success'}});
+  });
+  await page.goto('/');await page.getByTestId('nav-quiz').click();await page.getByRole('button',{name:'Ngân hàng câu hỏi',exact:true}).click();
+  await page.getByRole('button',{name:'Nhập file & Tạo bằng AI',exact:true}).click();
+  const book=XLSX.utils.book_new();
+  for(const [name,start,count] of [['Một',0,21],['Hai',21,365]] as const)XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Câu hỏi','A','B','Đáp án đúng'],...Array.from({length:count},(_,i)=>['Câu kiểm thử '+(start+i),'Lựa chọn A','Lựa chọn B','B'])]),name);
+  await page.locator('#ai-question-file-input').setInputFiles({name:'386-cau-kiem-thu.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:XLSX.write(book,{type:'buffer',bookType:'xlsx'})});
+  await page.getByRole('button',{name:'Đọc toàn bộ câu hỏi trong tệp',exact:true}).click();
+  await expect(page.getByText('Xem lại & Điều chỉnh câu hỏi (386 câu)',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:/Xác nhận thêm/}).click();
+  await expect(page.getByText('Giả lập chưa lưu được cả lô',{exact:true})).toBeVisible();
+  expect(questions).toHaveLength(0);
+  await page.getByRole('button',{name:/Xác nhận thêm/}).click();
+  await expect(page.getByText('Đã lưu 386/386 câu; 0 câu trùng đã có trong thư mục.',{exact:true})).toBeVisible();
+  expect(imports).toHaveLength(2);expect(imports[0].job_id).toBe(imports[1].job_id);expect(imports[1].questions).toHaveLength(386);
+  await expect(page.getByPlaceholder('Nội dung câu hỏi...')).toHaveCount(386);
+  await page.getByPlaceholder('Nội dung câu hỏi...').first().fill('Nội dung đã sửa, chưa lưu');
+  expect(puts).toBe(0);
+  await page.getByRole('button',{name:'Lưu câu hỏi',exact:true}).click();await expect.poll(()=>puts).toBe(1);
+  page.once('dialog',dialog=>dialog.accept());await page.getByTitle('Xóa thư mục',{exact:true}).click();
+  await expect(page.getByText('Đã xóa thư mục, giữ nguyên câu hỏi.',{exact:true})).toBeVisible();expect(deletes).toBe(1);
+  bus.emit('questionFolders');bus.emit('questionBank');
+  await expect(page.getByTitle('Xóa thư mục',{exact:true})).toHaveCount(0);
+  await page.reload();await page.getByTestId('nav-quiz').click();await page.getByRole('button',{name:'Ngân hàng câu hỏi',exact:true}).click();
+  await expect(page.getByPlaceholder('Nội dung câu hỏi...')).toHaveCount(386);
+  await expect(page.getByTitle('Xóa thư mục',{exact:true})).toHaveCount(0);expect(errors).toEqual([]);
+  await page.screenshot({path:'artifacts/screenshots/question-bank-386-local.png'});
+});
+
+test('Actual question workbook preserves all 383 rows in preview and retains 10 unresolved answers',async({page})=>{
+  test.skip(!process.env.RTG_QUESTION_IMPORT_FILE,'User workbook is local only and never committed.');
+  await page.setViewportSize({width:1366,height:900});await authenticated(page);
+  let selected:any[]=[];
+  await page.route('**/api/operations/question-bank/import',route=>{
+    selected=route.request().postDataJSON().questions;
+    return route.fulfill({json:{submitted:373,added:367,skipped:6,status:'success'}});
+  });
+  await page.goto('/');await page.getByTestId('nav-quiz').click();await page.getByRole('button',{name:'Ngân hàng câu hỏi',exact:true}).click();
+  await page.getByRole('button',{name:'Nhập file & Tạo bằng AI',exact:true}).click();
+  await page.locator('#ai-question-file-input').setInputFiles(process.env.RTG_QUESTION_IMPORT_FILE!);
+  await page.getByRole('button',{name:'Đọc toàn bộ câu hỏi trong tệp',exact:true}).click();
+  await expect(page.getByText('Xem lại & Điều chỉnh câu hỏi (383 câu)',{exact:true})).toBeVisible();
+  await expect(page.getByText('Cần kiểm tra 10 vị trí trong tệp',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Chỉ chọn câu có đáp án hợp lệ',exact:true}).click();
+  await page.getByRole('button',{name:/Xác nhận thêm \(373\)/}).click();
+  await expect(page.getByText('Xem lại & Điều chỉnh câu hỏi (10 câu)',{exact:true})).toBeVisible();
+  await expect(page.getByText('Đã lưu 367 câu mới; bỏ qua 6 câu trùng. Còn 10 câu chưa lưu được giữ ở đây để rà soát.',{exact:true})).toBeVisible();
+  expect(selected).toHaveLength(373);expect(selected.every(q=>q.options.some((o:any)=>o.id===q.correctOptionId))).toBe(true);
+});
+
 test('One active user can focus repeatedly without request storms; temporary profile errors keep the session',async({page})=>{
   await page.setViewportSize({width:1366,height:900});
   await authenticated(page);

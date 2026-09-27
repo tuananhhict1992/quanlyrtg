@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { pool, transaction, HttpError, asyncRoute } from "./db";
 import { stageEmbeddedFiles } from "./embedded-files";
 import { scheduledMaintenance } from "./scheduler";
+import { validateBankQuestion } from './question-bank';
 import {
   MODULE_PERMISSIONS,
   SHEET_TABS,
@@ -57,6 +58,8 @@ export async function writeRecord(
   input: any,
   merge = true,
 ) {
+  if (module==='questionBank' || module==='questionFolders')
+    await db.query("select pg_advisory_xact_lock(hashtextextended('question-bank',0))");
   if (
     !id ||
     id.length > 180 ||
@@ -78,7 +81,16 @@ export async function writeRecord(
     const removed=await db.query("select 1 from private.audit_log where module='incidents' and record_id=$1 and action in ('incidents.delete','incidents.discard') limit 1",[id]);
     if(removed.rows.length)throw new HttpError(409,'Vụ việc đã bị xóa khỏi bảng đối soát. Hãy tải lại dữ liệu.');
   }
+  if ((module==='questionBank' || module==='questionFolders') && !old) {
+    const removed=await db.query('select 1 from private.audit_log where module=$1 and record_id=$2 and action=$3 limit 1',[module,id,module+'.delete']);
+    if(removed.rows.length)throw new HttpError(409,'Mục này đã bị xóa. Hãy tải lại dữ liệu; bản cũ sẽ không được khôi phục.');
+  }
   const next = { ...(merge ? old : {}), ...redact(input), id };
+  if(module==='questionBank') {
+    validateBankQuestion(next);
+    if(next.folderId && !(await db.query("select 1 from private.records where module='questionFolders' and id=$1",[next.folderId])).rows.length)
+      throw new HttpError(409,'Thư mục đã bị xóa. Hãy chọn lại thư mục.');
+  }
   if (module === 'employees') {
     delete next.requiresCredentialChange;
     if (next.username !== undefined) {
@@ -272,6 +284,18 @@ recordsRouter.delete(
     const module = validModule(req.params.module);
     assertPermission(req.user, MODULE_PERMISSIONS[module]);
     await transaction(async (db) => {
+      if(module==='questionBank' || module==='questionFolders')
+        await db.query("select pg_advisory_xact_lock(hashtextextended('question-bank',0))");
+      if(module==='questionFolders') {
+        // Keep questions and published exam snapshots; only remove classification.
+        const questions=(await db.query("select id,data from private.records where module='questionBank' and data->>'folderId'=$1",[req.params.id])).rows;
+        const detached=questions.map(row=>{const data={...row.data,folderId:null};return {id:row.id,data,checksum:checksum(data)};});
+        if(detached.length){
+          await db.query(`update private.records r set data=x.data,checksum=x.checksum,updated_at=now()
+            from jsonb_to_recordset($1::jsonb) as x(id text,data jsonb,checksum text) where r.module='questionBank' and r.id=x.id`,[JSON.stringify(detached)]);
+          await db.query("insert into public.record_changes(module) values('questionBank')");
+        }
+      }
       const result = await db.query(
         "delete from private.records where module=$1 and id=$2 returning id",
         [module, req.params.id],

@@ -10,7 +10,11 @@ import { validModule, MODULE_PERMISSIONS } from "./security";
 import { generateBxxlHtml } from "../src/services/bxxlTemplate";
 import { finalizeRanking } from './rankings';
 import { confirmIncidents, discardIncidentDrafts } from './incidents';
+import { importQuestionBank } from './question-bank';
 export const operationsRouter = Router();
+operationsRouter.post('/question-bank/import',asyncRoute(async(req,res)=>{
+  res.json(await importQuestionBank(req.user,req.body));
+}));
 operationsRouter.get('/incidents/employees',asyncRoute(async(req,res)=>{
   assertPermission(req.user,'MANAGE_VIOLATIONS');
   const result=await pool.query("select id,data->>'fullName' as \"fullName\",data->>'employeeCode' as \"employeeCode\",data->>'department' as department,data->>'position' as position from private.records where module='employees' order by id");

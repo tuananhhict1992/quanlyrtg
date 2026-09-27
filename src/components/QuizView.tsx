@@ -95,9 +95,11 @@ interface QuizViewProps {
   currentUser: Employee;
   allEmployees: Employee[];
   questionBank: QuizQuestion[];
-  onUpdateQuestionBank: (bank: QuizQuestion[]) => void;
+  onSaveBankQuestion: (question: QuizQuestion) => Promise<void>;
+  onDeleteBankQuestion: (id:string) => Promise<void>;
   questionFolders: QuestionFolder[];
-  onUpdateQuestionFolders: (folders: QuestionFolder[]) => void;
+  onSaveQuestionFolder: (folder:QuestionFolder) => Promise<void>;
+  onDeleteQuestionFolder: (id:string) => Promise<void>;
   onSaveSubmission: (sub: QuizSubmission) => void;
   onAddQuiz?: (quiz: Quiz) => Promise<void>;
   onEditQuiz?: (quiz: Quiz) => void;
@@ -114,10 +116,12 @@ export const QuizView: React.FC<QuizViewProps> = ({
   submissions = [],
   currentUser,
   allEmployees = [],
-  questionBank = [],
-  onUpdateQuestionBank,
+  questionBank: savedQuestionBank = [],
+  onSaveBankQuestion,
+  onDeleteBankQuestion,
   questionFolders = [],
-  onUpdateQuestionFolders,
+  onSaveQuestionFolder,
+  onDeleteQuestionFolder,
   onSaveSubmission,
   onAddQuiz,
   onEditQuiz,
@@ -128,6 +132,21 @@ export const QuizView: React.FC<QuizViewProps> = ({
   onBackToDashboard,
   appSettings,
 }) => {
+  const [questionDrafts,setQuestionDrafts]=useState<Record<string,QuizQuestion>>({});
+  const [bankBusy,setBankBusy]=useState(false), [bankError,setBankError]=useState(''), [bankNotice,setBankNotice]=useState('');
+  const bankInFlight=useRef(false);
+  const questionBank=[...Object.values(questionDrafts).filter(q=>!savedQuestionBank.some(saved=>saved.id===q.id)),...savedQuestionBank.map(q=>questionDrafts[q.id]||q)];
+  const onUpdateQuestionBank=(items:QuizQuestion[])=>setQuestionDrafts(previous=>{
+    const next={...previous};
+    for(const q of items)if(JSON.stringify(q)!==JSON.stringify(questionBank.find(old=>old.id===q.id)))next[q.id]=q;
+    return next;
+  });
+  const bankAction=async(action:()=>Promise<void>,message:string)=>{
+    if(bankInFlight.current)return;
+    bankInFlight.current=true;setBankBusy(true);setBankError('');setBankNotice('');
+    try{await action();setBankNotice(message);}catch(e){setBankError((e as Error).message);}finally{bankInFlight.current=false;setBankBusy(false);}
+  };
+  const clearDraft=(id:string)=>setQuestionDrafts(previous=>{const next={...previous};delete next[id];return next;});
   const [activeTab, setActiveTab] = useState<'LIST' | 'TAKE' | 'RESULT' | 'RECORDS' | 'CREATE' | 'BANK'>('LIST');
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
 
@@ -374,72 +393,32 @@ export const QuizView: React.FC<QuizViewProps> = ({
     }
   };
 
-  // Folder management functions
-  const handleAddFolder = (name: string, description?: string): string => {
-    const newFolder: QuestionFolder = {
-      id: `fld-${Date.now()}`,
-      name: name.trim(),
-      description: description?.trim() || '',
-      color: 'indigo',
-      createdAt: new Date().toISOString(),
-    };
-    const updated = [...questionFolders, newFolder];
-    onUpdateQuestionFolders(updated);
-    return newFolder.id;
+  const handleAddFolder = async (name:string,description?:string):Promise<string> => {
+    const folder:QuestionFolder={id:'fld-'+crypto.randomUUID(),name:name.trim(),description:description?.trim()||'',color:'indigo',createdAt:new Date().toISOString()};
+    await onSaveQuestionFolder(folder);return folder.id;
   };
-
-  const handleSaveEditFolder = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!folderNameInput.trim()) return;
-
-    if (editingFolder) {
-      const updated = questionFolders.map((f) =>
-        f.id === editingFolder.id
-          ? { ...f, name: folderNameInput.trim(), description: folderDescInput.trim() }
-          : f
-      );
-      onUpdateQuestionFolders(updated);
-    } else {
-      handleAddFolder(folderNameInput, folderDescInput);
-    }
-
-    setFolderModalOpen(false);
-    setEditingFolder(null);
-    setFolderNameInput('');
-    setFolderDescInput('');
+  const handleSaveEditFolder = async (e:React.FormEvent) => {
+    e.preventDefault();if(!folderNameInput.trim())return;
+    await bankAction(async()=>{
+      if(editingFolder)await onSaveQuestionFolder({...editingFolder,name:folderNameInput.trim(),description:folderDescInput.trim()});
+      else await handleAddFolder(folderNameInput,folderDescInput);
+      setFolderModalOpen(false);setEditingFolder(null);setFolderNameInput('');setFolderDescInput('');
+    },'Đã lưu thư mục.');
   };
-
-  const handleDeleteFolder = (folderId: string) => {
-    const folder = questionFolders.find((f) => f.id === folderId);
-    if (!folder) return;
-    if (
-      window.confirm(
-        `Bạn có chắc chắn muốn xóa thư mục "${folder.name}"? Các câu hỏi trong thư mục này vẫn sẽ được giữ lại.`
-      )
-    ) {
-      const updatedBank = questionBank.map((q) =>
-        q.folderId === folderId ? { ...q, folderId: undefined } : q
-      );
-      onUpdateQuestionBank(updatedBank);
-      onUpdateQuestionFolders(questionFolders.filter((f) => f.id !== folderId));
-      if (selectedFolderId === folderId) {
-        setSelectedFolderId('all');
-      }
-    }
+  const handleDeleteFolder = async (folderId:string) => {
+    const folder=questionFolders.find(f=>f.id===folderId);if(!folder)return;
+    if(!window.confirm('Xóa thư mục "'+folder.name+'"? Các câu hỏi vẫn được giữ lại trong Chưa phân loại.'))return;
+    await bankAction(async()=>{await onDeleteQuestionFolder(folderId);
+      setQuestionDrafts(previous=>Object.fromEntries(Object.entries(previous).map(([id,q])=>[id,q.folderId===folderId?{...q,folderId:undefined}:q])));
+      if(selectedFolderId===folderId)setSelectedFolderId('all');
+    },'Đã xóa thư mục, giữ nguyên câu hỏi.');
   };
-
-  const handleConfirmAddAiQuestions = (newQuestions: QuizQuestion[], targetFldId?: string) => {
-    const questionsWithFolder = newQuestions.map((q) => ({
-      ...q,
-      folderId: targetFldId || q.folderId || questionFolders[0]?.id,
-    }));
-    onUpdateQuestionBank([...questionsWithFolder, ...questionBank]);
-    if (targetFldId) {
-      setSelectedFolderId(targetFldId);
-    }
-    if (onClearInitialAiFile) {
-      onClearInitialAiFile();
-    }
+  const handleConfirmAddAiQuestions = async (questions:QuizQuestion[],folderId?:string,jobId?:string) => {
+    const result=await api<any>('/operations/question-bank/import',{method:'POST',body:JSON.stringify({questions,folderId:folderId||'',job_id:jobId})});
+    setBankNotice('Đã lưu '+result.added+'/'+result.submitted+' câu; '+result.skipped+' câu trùng đã có trong thư mục.');
+    setSelectedFolderId(folderId||'all');
+    window.dispatchEvent(new CustomEvent('rtg:records-changed',{detail:'questionBank'}));
+    return result;
   };
 
   // Filter records
@@ -1267,6 +1246,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                   <button
                     type="button"
                     onClick={handleSelectAllFilteredQuestions}
+                    disabled={questionBank.length===0}
                     className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold transition-all flex items-center gap-1"
                   >
                     <CheckSquare className="w-3.5 h-3.5 text-indigo-600" />
@@ -1351,6 +1331,9 @@ export const QuizView: React.FC<QuizViewProps> = ({
       {/* 5. BANK VIEW WITH FOLDERS, AI PARSER & TEMPLATES */}
       {activeTab === 'BANK' && (
         <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-6">
+          {bankError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{bankError}</p>}
+          {bankNotice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{bankNotice}</p>}
+          <p className="text-xs text-slate-500">Chỉnh sửa từng câu rồi bấm Lưu câu hỏi. Các thay đổi chưa lưu được giữ trên màn hình.</p>
           {/* Header & Main Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
             <div>
@@ -1538,6 +1521,9 @@ export const QuizView: React.FC<QuizViewProps> = ({
                     key={q.id}
                     className="p-5 border border-slate-200 rounded-2xl bg-white shadow-2xs relative group hover:border-indigo-300 transition-colors"
                   >
+                    {questionDrafts[q.id] && <div className="mb-3 flex gap-2 items-center"><span className="text-xs text-amber-700">Chưa lưu</span>
+                      <button disabled={bankBusy} onClick={()=>void bankAction(async()=>{await onSaveBankQuestion(q);clearDraft(q.id);},'Đã lưu câu hỏi.')} className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs">{bankBusy?'Đang lưu…':'Lưu câu hỏi'}</button>
+                      <button disabled={bankBusy} onClick={()=>clearDraft(q.id)} className="text-xs text-slate-600">Hủy thay đổi</button></div>}
                     {/* Top Row: Folder selector & Delete Question */}
                     <div className="flex items-center justify-between gap-3 mb-3">
                       <div className="flex items-center gap-2">
@@ -1545,7 +1531,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                         <select
                           value={q.folderId || ''}
                           onChange={(e) => {
-                            const newBank = [...questionBank];
+                            const newBank = structuredClone(questionBank);
                             newBank[bankIdx].folderId = e.target.value || undefined;
                             onUpdateQuestionBank(newBank);
                           }}
@@ -1568,7 +1554,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                       <button
                         onClick={() => {
                           if (window.confirm('Xóa câu hỏi này khỏi ngân hàng?')) {
-                            onUpdateQuestionBank(questionBank.filter((bankQ) => bankQ.id !== q.id));
+                            void bankAction(async()=>{if(savedQuestionBank.some(saved=>saved.id===q.id))await onDeleteBankQuestion(q.id);clearDraft(q.id);},'Đã xóa câu hỏi.');
                           }
                         }}
                         className="text-slate-400 hover:text-rose-500 p-1 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
@@ -1583,7 +1569,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                       <input
                         value={q.question}
                         onChange={(e) => {
-                          const newBank = [...questionBank];
+                          const newBank = structuredClone(questionBank);
                           newBank[bankIdx].question = e.target.value;
                           onUpdateQuestionBank(newBank);
                         }}
@@ -1604,7 +1590,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                             name={`bank-correct-${q.id}`}
                             checked={q.correctOptionId === opt.id}
                             onChange={() => {
-                              const newBank = [...questionBank];
+                              const newBank = structuredClone(questionBank);
                               newBank[bankIdx].correctOptionId = opt.id;
                               onUpdateQuestionBank(newBank);
                             }}
@@ -1616,7 +1602,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                           <input
                             value={opt.text}
                             onChange={(e) => {
-                              const newBank = [...questionBank];
+                              const newBank = structuredClone(questionBank);
                               newBank[bankIdx].options[oIdx].text = e.target.value;
                               onUpdateQuestionBank(newBank);
                             }}
@@ -1629,7 +1615,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                           />
                           <button
                             onClick={() => {
-                              const newBank = [...questionBank];
+                              const newBank = structuredClone(questionBank);
                               newBank[bankIdx].options.splice(oIdx, 1);
                               if (
                                 newBank[bankIdx].correctOptionId === opt.id &&
@@ -1649,7 +1635,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
 
                       <button
                         onClick={() => {
-                          const newBank = [...questionBank];
+                          const newBank = structuredClone(questionBank);
                           newBank[bankIdx].options.push({
                             id: `o-${Date.now()}-${newBank[bankIdx].options.length}`,
                             text: 'Lựa chọn mới',
@@ -1672,7 +1658,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                         <input
                           value={q.explanation || ''}
                           onChange={(e) => {
-                            const newBank = [...questionBank];
+                            const newBank = structuredClone(questionBank);
                             newBank[bankIdx].explanation = e.target.value;
                             onUpdateQuestionBank(newBank);
                           }}
@@ -1687,7 +1673,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                         <input
                           value={q.citation || ''}
                           onChange={(e) => {
-                            const newBank = [...questionBank];
+                            const newBank = structuredClone(questionBank);
                             newBank[bankIdx].citation = e.target.value;
                             onUpdateQuestionBank(newBank);
                           }}
@@ -1818,7 +1804,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
               Phân loại câu hỏi trắc nghiệm theo từng chủ đề hoặc nhóm quy chế.
             </p>
 
-            <form onSubmit={handleSaveEditFolder} className="space-y-4">
+            <form onSubmit={handleSaveEditFolder} className="space-y-4">{bankError && <p role="alert" className="text-sm text-rose-700">{bankError}</p>}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Tên thư mục / Chủ đề:</label>
                 <input
@@ -1856,7 +1842,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={!folderNameInput.trim()}
+                  disabled={!folderNameInput.trim() || bankBusy}
                   className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
                 >
                   {editingFolder ? 'Lưu thay đổi' : 'Tạo thư mục'}

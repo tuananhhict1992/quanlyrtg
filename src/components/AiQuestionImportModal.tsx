@@ -1,5 +1,6 @@
 import {apiFetch} from '../services/supabase';
-import React, { useState } from 'react';
+import { parseQuestionText, type QuestionImportReport } from '../utils/questionImport';
+import React, { useState, useRef } from 'react';
 import {
   Upload,
   Sparkles,
@@ -28,8 +29,8 @@ interface AiQuestionImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   questionFolders?: QuestionFolder[];
-  onAddFolder: (name: string, description?: string) => string;
-  onConfirmAddQuestions: (questions: QuizQuestion[], targetFolderId?: string) => void;
+  onAddFolder: (name: string, description?: string) => Promise<string>;
+  onConfirmAddQuestions: (questions: QuizQuestion[], targetFolderId?: string, jobId?:string) => Promise<any>;
   initialFileBlob?: Blob;
   initialFileName?: string;
 }
@@ -51,8 +52,12 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
   const [pastedText, setPastedText] = useState<string>('');
   const [useTextInput, setUseTextInput] = useState<boolean>(false);
   const [targetFolderId, setTargetFolderId] = useState<string>(
-    questionFolders[0]?.id || 'folder-noiquy'
+    questionFolders[0]?.id || ''
   );
+  const [importMode,setImportMode]=useState<'IMPORT'|'GENERATE'>('IMPORT');
+  const [report,setReport]=useState<QuestionImportReport|null>(null);
+  const [isSaving,setIsSaving]=useState(false);
+  const saving=useRef(false), attempt=useRef<{key:string;id:string}|null>(null);
   const [questionCount, setQuestionCount] = useState<number>(5);
 
   // Loading & generation state
@@ -64,6 +69,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
   const [generatedQuestions, setGeneratedQuestions] = useState<QuizQuestion[]>([]);
   const [selectedQuestionIndices, setSelectedQuestionIndices] = useState<Record<number, boolean>>({});
   const [isReviewing, setIsReviewing] = useState<boolean>(false);
+  const [reviewPage,setReviewPage]=useState(0);
 
   // Create folder submodal
   const [showQuickFolderModal, setShowQuickFolderModal] = useState(false);
@@ -81,27 +87,31 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
   };
 
   const handleAnalyzeAndGenerate = async () => {
-    setErrorMessage(null);
-    if (!selectedFile && (!pastedText || !pastedText.trim())) {
+    setErrorMessage(null);setSuccessNotice(null);setReport(null);
+    if ((!selectedFile || useTextInput) && (!pastedText || !pastedText.trim())) {
       setErrorMessage('Vui lòng chọn tệp Word, Excel, PDF hoặc dán nội dung văn bản quy chế.');
       return;
     }
 
     setIsProcessing(true);
+    setReviewPage(0);
 
     try {
       let parsedData: any = {};
-      if (selectedFile) {
+      if (selectedFile && !useTextInput) {
         parsedData = await parseFileForQuestions(selectedFile, fileName || 'tailieu');
       } else {
         parsedData = {
           rawText: pastedText,
+          structuredQuestions:parseQuestionText(pastedText).questions,
+          report:parseQuestionText(pastedText),
           mimeType: 'text/plain',
         };
       }
 
       // If structured questions were extracted directly from standard Excel
-      if (parsedData.structuredQuestions && parsedData.structuredQuestions.length > 0) {
+      if (importMode==='IMPORT' && parsedData.structuredQuestions?.length > 0) {
+        setReport(parsedData.report || null);
         const questionsWithFolder = parsedData.structuredQuestions.map((q: QuizQuestion) => ({
           ...q,
           folderId: targetFolderId,
@@ -114,12 +124,16 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
         setSelectedQuestionIndices(allSelected);
         setIsReviewing(true);
         setSuccessNotice(
-          `Đã phát hiện và đọc ${questionsWithFolder.length} câu hỏi theo mẫu bố trí chuẩn Excel!`
+          `Đã đọc ${questionsWithFolder.length}/${parsedData.report?.detected || questionsWithFolder.length} câu hỏi. Kiểm tra danh sách và đáp án trước khi xác nhận lưu.`
         );
         setIsProcessing(false);
         return;
       }
 
+      if(importMode==='IMPORT') {
+        setReport(parsedData.report || null);
+        throw new Error('Chưa đọc được bộ câu hỏi có sẵn. Dùng bảng Excel theo mẫu hoặc văn bản Word/TXT gồm Câu 1:…, A.…, B.…, Đáp án đúng:…. Chế độ tạo bằng AI chỉ biên soạn số câu bạn chọn.');
+      }
       // Call server Gemini endpoint
       const selectedFolderName =
         (questionFolders || []).find((f) => f.id === targetFolderId)?.name || 'Quy định chung';
@@ -159,7 +173,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
           { id: 'opt-c', text: 'Lựa chọn C' },
           { id: 'opt-d', text: 'Lựa chọn D' },
         ],
-        correctOptionId: q.correctOptionId || 'opt-a',
+        correctOptionId: q.correctOptionId || '',
         explanation: q.explanation || '',
         citation: q.citation || `Trích từ: ${fileName || 'Tài liệu nội bộ'}`,
       }));
@@ -180,14 +194,25 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
     }
   };
 
-  const handleConfirmAddSelected = () => {
-    const finalToAdd = generatedQuestions.filter((_, idx) => selectedQuestionIndices[idx]);
-    if (finalToAdd.length === 0) {
-      setErrorMessage('Vui lòng chọn ít nhất 1 câu hỏi để thêm vào ngân hàng.');
-      return;
+  const handleConfirmAddSelected = async () => {
+    if(saving.current)return;
+    const questions=generatedQuestions.filter((_,idx)=>selectedQuestionIndices[idx]);
+    if(!questions.length){setErrorMessage('Vui lòng chọn ít nhất một câu hỏi.');return;}
+    const invalid=questions.filter(q=>!q.question.trim() || q.options.length<2 || q.options.some(o=>!o.text.trim()) || !q.options.some(o=>o.id===q.correctOptionId));
+    if(invalid.length){setErrorMessage('Còn '+invalid.length+' câu thiếu nội dung/lựa chọn/đáp án đúng. Hãy sửa hoặc bỏ chọn trước khi lưu.');return;}
+    const key=JSON.stringify([targetFolderId,questions]);
+    if(attempt.current?.key!==key)attempt.current={key,id:crypto.randomUUID()};
+    saving.current=true;setIsSaving(true);setErrorMessage(null);
+    try{
+      const result=await onConfirmAddQuestions(questions,targetFolderId,attempt.current.id);
+      const remaining=generatedQuestions.filter((_,idx)=>!selectedQuestionIndices[idx]);
+      if(remaining.length){
+        setGeneratedQuestions(remaining);setSelectedQuestionIndices(Object.fromEntries(remaining.map((_,i)=>[i,true])));setReviewPage(0);attempt.current=null;
+        setSuccessNotice('Đã lưu '+result.added+' câu mới; bỏ qua '+result.skipped+' câu trùng. Còn '+remaining.length+' câu chưa lưu được giữ ở đây để rà soát.');
+      } else onClose();
     }
-    onConfirmAddQuestions(finalToAdd, targetFolderId);
-    onClose();
+    catch(e){setErrorMessage((e as Error).message || 'Chưa lưu được. Danh sách vẫn được giữ để thử lại.');}
+    finally{saving.current=false;setIsSaving(false);}
   };
 
   const handleCopyWordTemplate = () => {
@@ -197,13 +222,16 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
     setTimeout(() => setSuccessNotice(null), 3500);
   };
 
-  const handleCreateQuickFolder = (e: React.FormEvent) => {
+  const handleCreateQuickFolder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFolderName.trim()) return;
-    const newId = onAddFolder(newFolderName.trim());
+    if(saving.current)return;saving.current=true;setIsSaving(true);
+    try{
+    const newId = await onAddFolder(newFolderName.trim());
     setTargetFolderId(newId);
     setNewFolderName('');
     setShowQuickFolderModal(false);
+    }catch(e){setErrorMessage((e as Error).message);}finally{saving.current=false;setIsSaving(false);}
   };
 
   return (
@@ -225,7 +253,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={()=>{if(!isSaving && !isProcessing)onClose();}} disabled={isSaving || isProcessing}
             className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
@@ -242,7 +270,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            1. Tải file & Tạo câu hỏi AI
+            1. Nhập câu hỏi / Biên soạn bằng AI
           </button>
           <button
             onClick={() => setActiveTab('TEMPLATES')}
@@ -271,13 +299,18 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
           </div>
         )}
 
+        {report && report.issues.length>0 && <details className="mt-3 text-xs text-amber-800"><summary>Cần kiểm tra {report.issues.length} vị trí trong tệp</summary><ul className="max-h-32 overflow-auto">{report.issues.map((issue,i)=><li key={i}>{issue}</li>)}</ul></details>}
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto py-4 space-y-4">
+        <fieldset disabled={isSaving} className="flex-1 min-h-0 overflow-y-auto py-4 space-y-4">
           {activeTab === 'ANALYZE' && (
             <>
               {!isReviewing ? (
                 /* Step 1: Upload and Configuration */
                 <div className="space-y-4">
+                  <div className="flex flex-wrap gap-3 text-sm">
+            <label><input type="radio" checked={importMode==='IMPORT'} onChange={()=>setImportMode('IMPORT')} /> Nhập toàn bộ câu hỏi có sẵn</label>
+            <label><input type="radio" checked={importMode==='GENERATE'} onChange={()=>setImportMode('GENERATE')} /> AI biên soạn câu hỏi mới</label>
+          </div>
                   {/* Select Destination Folder / Topic */}
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
                     <label className="block text-xs font-bold text-slate-800 mb-1.5">
@@ -289,6 +322,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                         onChange={(e) => setTargetFolderId(e.target.value)}
                         className="flex-1 px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-indigo-500/20"
                       >
+                        <option value="">Chưa phân loại</option>
                         {questionFolders.map((folder) => (
                           <option key={folder.id} value={folder.id}>
                             📁 {folder.name}
@@ -381,9 +415,10 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Số lượng câu hỏi AI cần trích xuất / biên soạn
+                        Số lượng câu hỏi mới do AI biên soạn
                       </label>
                       <select
+                        disabled={importMode!=='GENERATE'}
                         value={questionCount}
                         onChange={(e) => setQuestionCount(Number(e.target.value))}
                         className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl"
@@ -397,8 +432,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                     <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-200/60 text-[11px] text-amber-900">
                       <p className="font-semibold mb-0.5">💡 Lưu ý đồng bộ:</p>
                       <p>
-                        Nếu tệp Excel của bạn được bố trí theo mẫu ở Tab 2, hệ thống sẽ đọc chính xác 100%
-                        từng câu hỏi, đáp án đúng và trích dẫn quy chế.
+                        Chế độ nhập đọc tất cả sheet Excel và các câu hỏi theo mẫu Word/TXT, không giới hạn theo số câu AI. Dòng chưa đọc được hoặc thiếu đáp án sẽ được báo để kiểm tra.
                       </p>
                     </div>
                   </div>
@@ -416,7 +450,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                       </p>
                     </div>
                     <button
-                      onClick={() => setIsReviewing(false)}
+                      disabled={isSaving} onClick={() => setIsReviewing(false)}
                       className="text-xs text-indigo-600 hover:underline font-semibold"
                     >
                       ← Tải lại tệp khác
@@ -424,7 +458,16 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                   </div>
 
                   <div className="space-y-3">
-                    {generatedQuestions.map((q, idx) => {
+                    <div className="flex flex-wrap gap-3 text-xs items-center">
+                      <button type="button" className="text-indigo-700 underline" onClick={()=>setSelectedQuestionIndices(Object.fromEntries(generatedQuestions.map((q,i)=>[i,q.options.some(o=>o.id===q.correctOptionId)])))}>Chỉ chọn câu có đáp án hợp lệ</button>
+                      <button type="button" className="text-indigo-700 underline" onClick={()=>setSelectedQuestionIndices(Object.fromEntries(generatedQuestions.map((_,i)=>[i,true])))}>Chọn tất cả</button>
+                      <span>Trang {reviewPage+1}/{Math.max(1,Math.ceil(generatedQuestions.length/20))} · Tổng {generatedQuestions.length} câu</span>
+                      <button type="button" disabled={reviewPage===0} onClick={()=>setReviewPage(p=>p-1)}>Trang trước</button>
+                      <button type="button" disabled={(reviewPage+1)*20>=generatedQuestions.length} onClick={()=>setReviewPage(p=>p+1)}>Trang sau</button>
+                    </div>
+                    <p className="text-xs text-slate-500">Câu trùng nội dung, lựa chọn và đáp án trong cùng thư mục sẽ được bỏ qua khi lưu.</p>
+                    {generatedQuestions.slice(reviewPage*20,reviewPage*20+20).map((q, offset) => {
+                      const idx=reviewPage*20+offset;
                       const isSelected = !!selectedQuestionIndices[idx];
                       return (
                         <div
@@ -450,6 +493,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700">
                                   Câu {idx + 1}
                                 </span>
+                                {!q.correctOptionId && <span className="text-xs text-rose-700">Cần kiểm tra đáp án</span>}
                                 <input
                                   value={q.question}
                                   onChange={(e) => {
@@ -543,7 +587,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                         Mẫu bảng tính Excel chuẩn (.xlsx)
                       </h4>
                       <p className="text-[11px] text-slate-500">
-                        Điền trực tiếp các cột theo đúng thứ tự để hệ thống tự động nhận diện 100%
+                        Điền nội dung, các lựa chọn và một đáp án đúng A/B/C/D
                       </p>
                     </div>
                   </div>
@@ -596,10 +640,10 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                     </div>
                     <div>
                       <h4 className="font-bold text-slate-900 text-sm">
-                        Mẫu văn bản Word (.docx) & PDF chuẩn
+                        Mẫu văn bản Word (.docx) / TXT
                       </h4>
                       <p className="text-[11px] text-slate-500">
-                        Định dạng đơn giản, AI tự động quét từng câu hỏi và phương án A, B, C, D
+                        Đọc trực tiếp từng câu hỏi và phương án A, B, C, D. PDF dùng cho chức năng biên soạn bằng AI.
                       </p>
                     </div>
                   </div>
@@ -618,12 +662,12 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
               </div>
             </div>
           )}
-        </div>
+        </fieldset>
 
         {/* Footer Actions */}
         <div className="pt-4 border-t border-slate-100 flex items-center justify-between flex-shrink-0">
           <button
-            onClick={onClose}
+            onClick={()=>{if(!isSaving && !isProcessing)onClose();}} disabled={isSaving || isProcessing}
             className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
           >
             Đóng
@@ -634,20 +678,21 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
               {!isReviewing ? (
                 <button
                   onClick={handleAnalyzeAndGenerate}
-                  disabled={isProcessing}
+                  disabled={isProcessing || isSaving}
                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors disabled:opacity-50"
                 >
                   <Sparkles className={`w-4 h-4 ${isProcessing ? 'animate-spin' : ''}`} />
-                  <span>{isProcessing ? 'AI đang đọc & trích xuất câu hỏi...' : 'Phân tích & Tạo câu hỏi bằng AI'}</span>
+                  <span>{isProcessing ? 'Đang đọc tài liệu…' : importMode==='IMPORT' ? 'Đọc toàn bộ câu hỏi trong tệp' : 'Biên soạn câu hỏi bằng AI'}</span>
                 </button>
               ) : (
                 <button
                   onClick={handleConfirmAddSelected}
+                  disabled={isSaving}
                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>
-                    Xác nhận thêm (
+                    {isSaving ? 'Đang lưu cả lô, vui lòng chờ (' : 'Xác nhận thêm ('}
                     {
                       generatedQuestions.filter((_, idx) => selectedQuestionIndices[idx]).length
                     }
@@ -667,6 +712,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
             <h4 className="font-bold text-slate-900 text-sm mb-1">Tạo thư mục câu hỏi mới</h4>
             <p className="text-xs text-slate-500 mb-3">Phân chia chủ đề câu hỏi rõ ràng</p>
             <form onSubmit={handleCreateQuickFolder}>
+              {errorMessage && <p role="alert" className="text-sm text-rose-700">{errorMessage}</p>}
               <input
                 type="text"
                 autoFocus
@@ -685,7 +731,7 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={!newFolderName.trim()}
+                  disabled={!newFolderName.trim() || isSaving}
                   className="px-4 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl disabled:opacity-50"
                 >
                   Tạo thư mục
