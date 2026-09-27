@@ -75,3 +75,4 @@ Kiểm tra local đạt: typecheck, production build, migrations (14 bảng ứn
 - Đồng bộ palette, chữ, bán kính, bóng, biểu mẫu, bảng, focus/disabled; dùng logo HICT người dùng cung cấp ở đăng nhập, header và favicon.
 - Cải tiến bố cục dashboard và thông báo nội bộ, menu mobile, avatar lỗi, toast giới hạn chiều rộng. Giữ các callback nghiệp vụ và phân quyền.
 - Typecheck, build và 11/11 kiểm thử Chrome đạt trên bốn kích thước 390/768/1366/1920px. Không có migration mới hoặc thay đổi backend. Xem UI_GUIDE.md.
+- Bổ sung kiểm thử thứ 12 cho đóng gói logo: giả lập PNG public bị 404, xác nhận ảnh nhúng giải mã đủ 4000×3000 và SHA-256 khớp ảnh nguồn. Typecheck/build và kiểm thử này đạt sau sửa. Logo được tải qua module lazy để trình nhập ZIP của AI Studio không bỏ mất ảnh; byte gốc giữ nguyên.

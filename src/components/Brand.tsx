@@ -1,7 +1,23 @@
 import React, { useEffect, useState } from "react";
 
+let logoData = '';
+let logoRequest: Promise<string> | undefined;
+const loadLogo = () => logoRequest ||= import('../assets/hict').then(module => {
+  logoData = module.default;
+  const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]') || document.createElement('link');
+  icon.rel = 'icon'; icon.type = 'image/png'; icon.href = logoData;
+  if (!icon.isConnected) document.head.append(icon);
+  return logoData;
+});
+
 /** Display the supplied artwork without changing its pixels or proportions. */
 export function BrandLogo({ className = "" }: { className?: string }) {
+  const [source, setSource] = useState(logoData);
+  useEffect(() => {
+    let active = true;
+    loadLogo().then(value => { if (active) setSource(value); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
   return (
     <svg
       role="img"
@@ -9,7 +25,7 @@ export function BrandLogo({ className = "" }: { className?: string }) {
       viewBox="100 730 3880 1460"
       className={`hict-logo ${className}`}
     >
-      <image href="/brand/hict-logo.png" width="4000" height="3000" />
+      {source ? <image href={source} width="4000" height="3000" /> : <text x="100" y="1900" fontSize="1200" fontWeight="bold" fill="#006eae">HICT</text>}
     </svg>
   );
 }

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { createHash } from 'node:crypto';
 const admin = {
   id: "test-admin",
   fullName: "Quản trị kiểm thử",
@@ -21,6 +22,17 @@ const admin = {
   visibleTabs: [],
   joinDate: "2026-01-01",
 };
+
+test('Original HICT logo renders when the deployment omits binary public assets', async ({page}) => {
+  await page.route('**/brand/hict-logo.png', route => route.fulfill({status:404,body:'Not found'}));
+  await page.goto('/');
+  const artwork=page.locator('svg[aria-label="HICT — Saigon Newport"] image').first();
+  await expect(artwork).toHaveAttribute('href',/^data:image\/png;base64,/);
+  const source=await artwork.getAttribute('href');
+  expect(createHash('sha256').update(Buffer.from(source!.split(',')[1],'base64')).digest('hex')).toBe('79ddc19566aa5111bc74bfbe596c2c24f4304580fd7210ece2c66e71135891d5');
+  const size=await page.evaluate(async(src)=>{const img=new Image();img.src=src!;await img.decode();return [img.naturalWidth,img.naturalHeight];},source);
+  expect(size).toEqual([4000,3000]);
+});
 async function authenticated(page: any, includeArchive = false) {
   await page.addInitScript(
     ({ user }) => {

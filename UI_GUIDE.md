@@ -12,4 +12,6 @@ Cập nhật 27/09/2026. Các quy tắc dùng chung nằm ở src/index.css; log
 - Tổng quan ưu tiên số liệu, thông báo, lối tắt rồi các báo cáo. Chức năng, quyền truy cập và luồng nghiệp vụ tiếp tục dùng cơ chế hiện có.
 - Không thay schema, RLS, xác thực hoặc dữ liệu nhân sự trong lần cập nhật này.
 
-Kiểm tra local: TypeScript, production build và 11 kiểm thử Chrome đạt; gồm 390/768/1366/1920px, điều hướng các phân hệ, Google Preview/Confirm, ảnh tệp, giao bài chống trùng và thông báo nội bộ. Build còn cảnh báo chunk lớn như trước.
+Logo được đóng gói dưới dạng module lazy tại src/assets/hict để AI Studio vẫn xuất bản đúng ảnh khi trình nhập ZIP bỏ qua file nhị phân public. Chạy node scripts/embed-brand-logo.mjs sau khi thay ảnh nguồn. Các phần base64 chứa nguyên byte PNG, được tải một lần và dùng chung cho logo/favicon; không nằm trong bundle chính.
+
+Kiểm tra local: TypeScript, production build và 12 kiểm thử Chrome đạt qua hai lượt chạy; gồm 390/768/1366/1920px, điều hướng các phân hệ, Google Preview/Confirm, ảnh tệp, giao bài chống trùng và thông báo nội bộ. Test logo giả lập đường dẫn PNG 404, xác nhận ảnh nhúng giải mã được ở 4000×3000 và trùng SHA-256 gốc. Build còn cảnh báo chunk lớn; riêng ảnh gốc 2,69 MB được tải qua chunk lazy, không tối ưu mất dữ liệu.
