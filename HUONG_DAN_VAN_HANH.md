@@ -6,6 +6,8 @@ Ngày cập nhật: 27/09/2026. Project đã chọn: **quanlyrtghict — utcpdfi
 
 Bản cập nhật tài khoản ngày 27/09 dùng **tên đăng nhập + mật khẩu**, không yêu cầu nhân viên nhập email. Tên đăng nhập không phân biệt hoa/thường, không được trùng; dùng 2–64 chữ không dấu, số, dấu chấm, gạch dưới hoặc gạch ngang. Đăng nhập Google chỉ dành cho hồ sơ ADMIN đang hoạt động và đã liên kết.
 
+Cấu hình SUPABASE_SECRET_KEY trên website chính thức đã được xác minh ở revision `quanlyrtg-00014-2rg`. Admin có thể bắt đầu từ bước 2 dưới đây. Kiểm tra triển khai chỉ đọc trạng thái tài khoản; chưa cấp tài khoản hàng loạt hoặc đặt lại mật khẩu đang dùng.
+
 1. Cấu hình **SUPABASE_SECRET_KEY** trong AI Studio → Settings → Secrets, lấy Secret key của đúng project tại Supabase → Project Settings → API Keys. Khóa chỉ ở máy chủ, tuyệt đối không đặt trong VITE_*, Git, hồ sơ nhân sự, Sheets hoặc chat. Có thể dùng biến server SUPABASE_SERVICE_ROLE_KEY cho hệ thống legacy. Không cần khóa admin cho người dùng tự đổi mật khẩu.
 2. Admin vào **Nhân sự → Sửa hồ sơ**. Lưu tên đăng nhập trước nếu còn trống hoặc vừa thay đổi, rồi mở lại hồ sơ.
 3. Trong **Tài khoản đăng nhập — Chỉ Admin**, bấm **Cấp tài khoản**, xác nhận. Mật khẩu ban đầu mặc định **123456**. Thao tác cấp từng tài khoản theo xác nhận của Admin; việc nhập hồ sơ không tự tạo tài khoản đăng nhập.
