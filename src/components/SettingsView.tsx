@@ -1,5 +1,5 @@
 import { UserAvatar } from './Brand';
-import {supabase} from '../services/supabase';
+import {changeOwnPassword} from '../services/supabase';
 import React, { useState } from 'react';
 import {
   UserCheck,
@@ -80,8 +80,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setPasswordError(null);
     setPasswordSuccess(null);
 
-    if (!newPassword || newPassword.length < 6) {
-      setPasswordError('Mật khẩu mới phải có ít nhất 6 ký tự.');
+    if (!newPassword || newPassword.length < 8) {
+      setPasswordError('Mật khẩu mới phải có ít nhất 8 ký tự.');
       return;
     }
 
@@ -90,10 +90,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       return;
     }
 
-    const verified=await supabase.auth.signInWithPassword({email:currentUser.email,password:currentPassword});
-    if(verified.error){setPasswordError('Mật khẩu hiện tại không đúng.');return;}
-    const {error}=await supabase.auth.updateUser({password:newPassword});
-    if(error){setPasswordError(error.message);return;}
+    try { await changeOwnPassword(currentPassword,newPassword); }
+    catch(error) { setPasswordError((error as Error).message); return; }
     setPasswordSuccess('Đổi mật khẩu tài khoản thành công!');
     setCurrentPassword('');
     setNewPassword('');
@@ -357,7 +355,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Tối thiểu 6 ký tự..."
+                  placeholder="Tối thiểu 8 ký tự..."
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs sm:text-sm text-slate-800"
                 />
               </div>

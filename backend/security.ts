@@ -141,6 +141,8 @@ export function authorizeWrite(
   if (module === "quizSubmissions")
     throw new HttpError(403, "Nộp bài qua API chấm điểm.");
   if (module === "employees") {
+    if (next.role === 'ADMIN' && previous?.role !== 'ADMIN' && user.role !== 'ADMIN')
+      throw new HttpError(403, 'Chỉ Admin được cấp vai trò Admin.');
     const guarded = ["role", "assignedPermissions", "visibleTabs", "status"];
     if (guarded.some((k) => canonical(next[k]) !== canonical(previous?.[k])))
       assertPermission(user, "MANAGE_PERMISSIONS");

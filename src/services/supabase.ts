@@ -59,17 +59,27 @@ export async function api<T = any>(
   if (!res.ok) throw new Error(data.error || "Không thể thực hiện yêu cầu.");
   return data;
 }
-export async function loginWithEmail(email: string, password: string) {
+export async function loginWithUsername(username: string, password: string) {
   if (!configured)
     throw new Error(
       "Chưa cấu hình Supabase. Xem hướng dẫn triển khai trong README.",
     );
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
+  const response = await fetch('/api/auth/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }), cache: 'no-store',
   });
+  const session = await response.json();
+  if (!response.ok) throw new Error(session.error || 'Không thể đăng nhập.');
+  const { data, error } = await supabase.auth.setSession(session);
   if (error) throw error;
   return data.user;
+}
+export async function changeOwnPassword(currentPassword: string, password: string) {
+  const result = await api('/account/password', { method: 'POST', body: JSON.stringify({ currentPassword, password }) });
+  if (result.session) {
+    const { error } = await supabase.auth.setSession(result.session);
+    if (error) throw new Error('Đã đổi mật khẩu. Vui lòng đăng nhập lại.');
+  } else await logoutUser();
 }
 export async function loginWithGoogle() {
   if (!configured) throw new Error("Chưa cấu hình Supabase.");

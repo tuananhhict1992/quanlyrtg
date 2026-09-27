@@ -9,6 +9,7 @@ test("health is public, all business, Google and AI APIs require authentication"
     "/api/me",
     "/api/records/employees",
     "/api/google/jobs",
+    "/api/admin/accounts/e1",
     "/api/proxy/appsscript?url=http://localhost",
   ])
     assert.equal((await request(app).get(path)).status, 401);
@@ -18,6 +19,8 @@ test("health is public, all business, Google and AI APIs require authentication"
     "/api/internal-notifications/send",
     "/api/files",
     "/api/operations/backup",
+    "/api/admin/accounts/e1/password",
+    "/api/account/password",
   ])
     assert.equal((await request(app).post(path).send({})).status, 401);
   const health = await request(app).get("/api/health");

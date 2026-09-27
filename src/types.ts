@@ -326,6 +326,8 @@ export interface RoleConfig {
 export interface Employee {
   id: string;
   username?: string;
+  /** Supplied by /api/me, never persisted in personnel records. */
+  requiresCredentialChange?: boolean;
 
   employeeCode: string;
   fullName: string;

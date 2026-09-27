@@ -4,6 +4,7 @@ const admin = {
   id: "test-admin",
   fullName: "Quản trị kiểm thử",
   employeeCode: "TEST001",
+  username: 'test001',
   email: "test@example.test",
   phone: "",
   zaloPhone: "",
@@ -33,7 +34,7 @@ test('Original HICT logo renders when the deployment omits binary public assets'
   const size=await page.evaluate(async(src)=>{const img=new Image();img.src=src!;await img.decode();return [img.naturalWidth,img.naturalHeight];},source);
   expect(size).toEqual([4000,3000]);
 });
-async function authenticated(page: any, includeArchive = false) {
+async function authenticated(page: any, includeArchive = false, profile: any = admin) {
   await page.addInitScript(
     ({ user }) => {
       const encode = (x: any) => btoa(JSON.stringify(x));
@@ -63,7 +64,7 @@ async function authenticated(page: any, includeArchive = false) {
         }),
       );
     },
-    { user: admin },
+    { user: profile },
   );
   await page.route("**/api/**", async (route: any) => {
     const u = new URL(route.request().url());
@@ -72,7 +73,7 @@ async function authenticated(page: any, includeArchive = false) {
       return;
     }
     let body: any = { success: true };
-    if (u.pathname === "/api/me") body = admin;
+    if (u.pathname === "/api/me") body = profile;
     else if (u.pathname === "/api/google/import/preview")
       body = {
         job_id: "preview-test",
@@ -100,7 +101,7 @@ async function authenticated(page: any, includeArchive = false) {
       ];
     else if (u.pathname.startsWith("/api/records/")) {
       const module = u.pathname.split("/")[3];
-      body = { items: module === "employees" ? [admin] : module === 'feedbacks' && includeArchive ? [{
+      body = { items: module === "employees" ? [profile] : module === 'feedbacks' && includeArchive ? [{
         id:'feedback-1',title:'Ảnh đã lưu trữ',content:'Kiểm tra đọc ảnh riêng tư.',category:'DONG_GOP',categoryName:'Đóng góp',status:'APPROVED',
         authorId:admin.id,authorName:admin.fullName,authorDepartment:admin.department,submittedAt:'2026-09-25T00:00:00Z',
         isAnonymous:false,images:['https://drive.google.com/file/d/image-test/view'],
@@ -116,7 +117,7 @@ for (const width of [390, 768, 1366, 1920]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto("/");
     await expect(
-      page.getByText("Email đăng nhập", { exact: true }),
+      page.getByText("Tên đăng nhập", { exact: true }),
     ).toBeVisible();
     await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
     await page.screenshot({
@@ -347,4 +348,63 @@ test('Internal notification keeps draft and job ID on failure, then displays the
   expect(sends[0].jobId).toBe(sends[1].jobId);
   expect(sends[1].recipientIds).toEqual([admin.id]);
   await expect(page.getByText('Thông báo kiểm thử nội bộ',{exact:true}).first()).toBeVisible();
+});
+
+for (const width of [390,1366]) {
+  test(`Admin credential controls mask new password and preserve retry at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width,height:1000});
+    await authenticated(page);
+    await page.route('**/api/admin/accounts/test-admin',route=>route.fulfill({json:{linked:false,configured:true,username:'test001',must_change_password:false}}));
+    const writes:any[]=[];
+    await page.route('**/api/admin/accounts/test-admin/password',async route=>{
+      writes.push(route.request().postDataJSON());
+      if(writes.length===1) return route.fulfill({status:503,json:{error:'Lỗi kết nối thử nghiệm'}});
+      return route.fulfill({json:{success:true}});
+    });
+    await page.goto('/');
+    if(width<1024) await page.getByRole('button',{name:'Mở menu',exact:true}).click();
+    await page.getByTestId('nav-hr').click();
+    await page.locator('button[title="Sửa hồ sơ"]:visible,button[title="Sửa thông tin"]:visible').first().click();
+    const field=page.getByLabel('Mật khẩu ban đầu',{exact:true});
+    await expect(field).toHaveValue('123456');
+    await expect(field).toHaveAttribute('type','password');
+    await page.getByRole('button',{name:'Hiện mật khẩu mới',exact:true}).click();
+    await expect(field).toHaveAttribute('type','text');
+    await page.getByRole('button',{name:'Cấp tài khoản',exact:true}).click();
+    await expect(field).toHaveAttribute('type','password');
+    await page.getByRole('button',{name:'Xác nhận lưu mật khẩu',exact:true}).click();
+    await expect(page.getByRole('alert')).toContainText('Lỗi kết nối thử nghiệm');
+    await page.getByRole('button',{name:'Xác nhận lưu mật khẩu',exact:true}).click();
+    await expect(page.getByRole('status')).toContainText('Đã lưu mật khẩu mới');
+    await expect(page.getByLabel('Đặt mật khẩu mới',{exact:true})).toHaveValue('');
+    expect(writes).toHaveLength(2);
+    expect(writes[0].job_id).toBe(writes[1].job_id);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+    await page.screenshot({path:`artifacts/screenshots/account-admin-${width}.png`,fullPage:true});
+  });
+}
+
+test('HR manager cannot see another account password controls', async ({page})=>{
+  await authenticated(page,false,{...admin,role:'MANAGER',assignedPermissions:['MANAGE_HR','MANAGE_PERMISSIONS'],visibleTabs:['dashboard','hr']});
+  const credentialReads:string[]=[];
+  page.on('request',req=>{if(req.url().includes('/api/admin/accounts/'))credentialReads.push(req.url());});
+  await page.setViewportSize({width:1366,height:1000});
+  await page.goto('/');
+  await page.getByTestId('nav-hr').click();
+  await page.locator('button[title="Sửa hồ sơ"]:visible,button[title="Sửa thông tin"]:visible').first().click();
+  await expect(page.getByRole('region',{name:'Tài khoản đăng nhập'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Hiện mật khẩu mới'})).toHaveCount(0);
+  expect(credentialReads).toHaveLength(0);
+});
+
+test('First password gate prevents business reads before change',async({page})=>{
+  await authenticated(page,false,{...admin,role:'USER',requiresCredentialChange:true});
+  const reads:string[]=[];
+  page.on('request',req=>{if(req.url().includes('/api/records/'))reads.push(req.url());});
+  await page.setViewportSize({width:390,height:1000});
+  await page.goto('/');
+  await expect(page.getByRole('heading',{name:'Đổi mật khẩu ban đầu',exact:true})).toBeVisible();
+  await expect(page.getByTestId('nav-hr')).toHaveCount(0);
+  expect(reads).toHaveLength(0);
+  await page.screenshot({path:'artifacts/screenshots/first-password-390.png',fullPage:true});
 });

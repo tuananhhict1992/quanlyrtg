@@ -2,7 +2,21 @@
 
 Ngày cập nhật: 27/09/2026. Project đã chọn: **quanlyrtghict — utcpdfiyaqnimdasttak**.
 
-**Địa chỉ ngắn chính thức:** [quanlyrtg.ai.studio](https://quanlyrtg.ai.studio/). Đã kiểm chứng HTTPS và đăng nhập Google với admin `tuananh.hict1992@gmail.com` trên địa chỉ mới; đăng nhập email/mật khẩu Supabase vẫn được giữ. Đường [run.app dự phòng](https://quanlyrtg-290449474780.asia-southeast1.run.app/) tiếp tục hoạt động. Alias cũ đã được thay thế, hãy cập nhật bookmark.
+## Đăng nhập bằng tên đăng nhập và quản lý mật khẩu
+
+Bản cập nhật tài khoản ngày 27/09 dùng **tên đăng nhập + mật khẩu**, không yêu cầu nhân viên nhập email. Tên đăng nhập không phân biệt hoa/thường, không được trùng; dùng 2–64 chữ không dấu, số, dấu chấm, gạch dưới hoặc gạch ngang. Đăng nhập Google chỉ dành cho hồ sơ ADMIN đang hoạt động và đã liên kết.
+
+1. Cấu hình **SUPABASE_SECRET_KEY** trong AI Studio → Settings → Secrets, lấy Secret key của đúng project tại Supabase → Project Settings → API Keys. Khóa chỉ ở máy chủ, tuyệt đối không đặt trong VITE_*, Git, hồ sơ nhân sự, Sheets hoặc chat. Có thể dùng biến server SUPABASE_SERVICE_ROLE_KEY cho hệ thống legacy. Không cần khóa admin cho người dùng tự đổi mật khẩu.
+2. Admin vào **Nhân sự → Sửa hồ sơ**. Lưu tên đăng nhập trước nếu còn trống hoặc vừa thay đổi, rồi mở lại hồ sơ.
+3. Trong **Tài khoản đăng nhập — Chỉ Admin**, bấm **Cấp tài khoản**, xác nhận. Mật khẩu ban đầu mặc định **123456**. Thao tác cấp từng tài khoản theo xác nhận của Admin; việc nhập hồ sơ không tự tạo tài khoản đăng nhập.
+4. Nhân viên đăng nhập bằng tên được cấp và 123456, sau đó bắt buộc đổi sang mật khẩu riêng ít nhất 8 ký tự trước khi truy cập dữ liệu. Không gửi mật khẩu vào thông báo tập thể.
+5. Khi quên mật khẩu, Admin mở hồ sơ → nhập **Đặt mật khẩu mới** → **Đặt lại mật khẩu** → xác nhận. Mọi mật khẩu do Admin đặt đều yêu cầu nhân viên đổi ở lần đăng nhập kế tiếp. Phiên cũ bị chặn trên API kể cả khi refresh token. Admin có thể bấm hiện/ẩn giá trị mới đang nhập; không ai, kể cả Admin, đọc lại được mật khẩu đã lưu.
+
+Mật khẩu không nằm trong `private.records`, export Excel/Sheets, backup hay audit. Tài khoản mới dùng địa chỉ kỹ thuật thuộc miền `.invalid` bên trong Supabase để hỗ trợ tên đăng nhập; địa chỉ này không gửi mail và không thay email liên hệ của nhân viên. Tài khoản Admin Google hiện có được giữ liên kết và mật khẩu, không bị đặt lại thành 123456. Chỉ Admin được cấp vai trò Admin.
+
+Migration `20260927064939_username_accounts.sql` đã áp dụng và ghi ledger trên project. Kiểm thử local: 28 backend/database và 16 Chrome đều đạt, RLS vẫn bật. Chức năng cấp/đặt lại tài khoản chỉ hoạt động khi server đã có Secret key hợp lệ; trạng thái chưa cấu hình hiển thị rõ trong hồ sơ. Không tự đặt lại mật khẩu người thật để kiểm thử.
+
+**Địa chỉ ngắn chính thức:** [quanlyrtg.ai.studio](https://quanlyrtg.ai.studio/). Đã kiểm chứng HTTPS và đăng nhập Google với admin `tuananh.hict1992@gmail.com` trên địa chỉ mới; bản cập nhật mới chuyển biểu mẫu nhân viên sang tên đăng nhập/mật khẩu Supabase. Đường [run.app dự phòng](https://quanlyrtg-290449474780.asia-southeast1.run.app/) tiếp tục hoạt động. Alias cũ đã được thay thế, hãy cập nhật bookmark.
 
 Google OAuth đã được cấu hình trong Supabase và AI Studio Secrets. Kho đã liên kết với `tuananh.hict1992@gmail.com`: [RTG_SYSTEM](https://drive.google.com/drive/folders/1qzDLF2Obxkk7OvxI-feAoecF8q38wCEH) có đủ 10 thư mục; [RTG_ARCHIVE](https://docs.google.com/spreadsheets/d/1uXT_ON2PjFPFO04whDJ9Poy3mCebtbXK4cI9RdMliF0/edit) có đủ 11 tab yêu cầu. Đã xử lý 82 tác vụ thành công, gồm báo cáo nhân sự/vi phạm và ba file lưu trữ, bao gồm Backup JSON. Đã kiểm chứng file chỉ bị xóa khỏi vùng tạm sau khi Drive trả ID và metadata được lưu. Một file mới Preview, chưa Confirm vẫn được giữ chờ. PostgreSQL tiếp tục là database chính.
 

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 export async function testDatabase() {
   const db = new PGlite();
   await db.exec(
-    "create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;",
+    "create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key,email text,raw_app_meta_data jsonb default '{}');create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;",
   );
   for (const file of (await readdir("supabase/migrations"))
     .filter((f) => f.endsWith(".sql"))

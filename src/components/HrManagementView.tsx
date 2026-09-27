@@ -1,4 +1,5 @@
 import { UserAvatar } from './Brand';
+import { EmployeeAccountPanel } from './EmployeeAccountPanel';
 import {GoogleReportActions} from './GoogleReportActions';
 import {parseWorkbook} from '../services/excelProcessing';
 import {apiFetch,api} from '../services/supabase';
@@ -109,7 +110,6 @@ export const HrManagementView: React.FC<HrManagementViewProps> = ({
   const [selectedEmployeeDetail, setSelectedEmployeeDetail] = useState<Employee | null>(null);
   // Chế độ hiển thị: 'responsive' (Tự động Thẻ trên Mobile/Cốc Cốc, Bảng trên Desktop), 'cards' (Thẻ), 'table' (Bảng)
   const [viewLayout, setViewLayout] = useState<'responsive' | 'cards' | 'table'>('responsive');
-  const [showDetailPassword, setShowDetailPassword] = useState(false);
 
   // Modal Trung tâm Tác vụ Quản lý Nhân sự (6 chức năng)
   const [isActionHubOpen, setIsActionHubOpen] = useState(false);
@@ -2080,13 +2080,17 @@ export const HrManagementView: React.FC<HrManagementViewProps> = ({
                   <input
                     type="text"
                     placeholder="user1"
+                    disabled={!!editingEmployee && currentUser.role !== 'ADMIN'}
                     value={formData.username}
                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                   />
                 </div>
-<div className="text-sm text-slate-500">Cột E bỏ qua do Supabase Auth quản lý. Cấp tài khoản và gửi email đặt lại mật khẩu từ trang quản trị.</div>
               </div>
+
+              {currentUser.role === 'ADMIN' && (editingEmployee ?
+                <EmployeeAccountPanel key={editingEmployee.id} employeeId={editingEmployee.id} username={formData.username} fullName={editingEmployee.fullName} /> :
+                <p className="text-sm text-slate-500">Lưu hồ sơ trước, sau đó mở Chỉnh sửa để cấp tài khoản với mật khẩu ban đầu 123456.</p>)}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>

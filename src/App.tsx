@@ -54,6 +54,7 @@ const FeedbackView=lazy(()=>import('./components/FeedbackView').then(m=>({defaul
 const ZaloView=lazy(()=>import('./components/ZaloView').then(m=>({default:m.ZaloView})));
 const PermissionsView=lazy(()=>import('./components/PermissionsView').then(m=>({default:m.PermissionsView})));
 import { LoginView } from './components/LoginView';
+import { FirstPasswordChange } from './components/FirstPasswordChange';
 const SettingsView=lazy(()=>import('./components/SettingsView').then(m=>({default:m.SettingsView})));
 import { InternalNotificationComposer } from './components/InternalNotificationComposer';
 import { canNotify, postInternalMessage, type InternalDraft } from './services/internalNotifications';
@@ -158,7 +159,7 @@ export default function App() {
     return()=>{active=false;subscription.unsubscribe();};
   },[]);
   useEffect(()=>{
-    if(!currentUser)return;
+    if(!currentUser || currentUser.requiresCredentialChange)return;
     setDataLoading(true);
     const sources:[string,(data:any[])=>void][]=[['employees',setEmployees],['internalDocuments',setDocuments],['questionFolders',setQuestionFolders],['questionBank',setQuestionBank],['quizzes',setQuizzes],['quizSubmissions',setSubmissions],['feedbacks',setFeedbacks],['zaloMessages',setZaloMessages],['bxxlRecords',setBxxlRecords],['leaveRequests',setLeaveRequests],['incidents',setIncidents]];
     let count=0;const done=()=>{if(++count>=sources.length)setDataLoading(false);};
@@ -167,7 +168,7 @@ export default function App() {
     const refresh=()=>api<Employee>('/me').then(setCurrentUser).catch(e=>{setCurrentUser(null);setAuthError(e.message);});
     const timer=setInterval(refresh,60000);window.addEventListener('focus',refresh);
     return()=>{unsubs.forEach(fn=>fn());clearInterval(timer);window.removeEventListener('focus',refresh);};
-  },[currentUser?.id]);
+  },[currentUser?.id, currentUser?.requiresCredentialChange]);
   useEffect(()=>{if(currentUser&&!isTabAllowed(activeTab as TabType,currentUser))setActiveTab(getFirstAllowedTab(currentUser));},[currentUser,activeTab]);
 
   // Tổng hợp tất cả các hồ sơ vi phạm của nhân sự hệ thống để đồng bộ Google Sheet & Đánh giá năng lực
@@ -1373,7 +1374,7 @@ export default function App() {
     }
   };
 
-  // If user is not logged in, show LoginView with Google & Email Auth
+  // Username login for staff; Google is restricted to Admin by the backend.
   if(location.pathname!=='/')return <div className="p-12 text-center"><h1>404 · Không tìm thấy trang</h1><a href="/">Về trang chủ</a></div>;
   if (!authInitialized) return <div role="status" className="p-10 text-center">Đang xác thực phiên đăng nhập…</div>;
   if (!currentUser) {
@@ -1386,6 +1387,8 @@ export default function App() {
       />
     );
   }
+
+  if (currentUser.requiresCredentialChange) return <FirstPasswordChange onComplete={async () => setCurrentUser(await api<Employee>('/me'))} />;
 
   // Cửa sổ cập nhật thông tin chỉ hiển thị khi onboardingCompleted === false và chưa bị đóng/bỏ qua
   const isDismissed =

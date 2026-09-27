@@ -2,6 +2,7 @@ import mammoth from "mammoth";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { requireAuth } from "./backend/auth";
+import { publicAccountsRouter, accountsRouter } from "./backend/accounts";
 import { recordsRouter } from "./backend/records";
 import { googleRouter } from "./backend/google-routes";
 import { finishGoogleOAuth } from "./backend/google-oauth";
@@ -67,12 +68,14 @@ app.use(
   }),
 );
 app.get("/api/google/oauth/callback", asyncRoute(finishGoogleOAuth));
+app.use('/api/auth', publicAccountsRouter);
 app.use("/api", requireAuth);
 const PORT = Number(process.env.PORT) || 3000;
 
 // Body parser
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
+app.use('/api', accountsRouter);
 
 // Lazy initialization of Gemini client
 let genAIClient: GoogleGenAI | null = null;

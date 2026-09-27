@@ -97,3 +97,13 @@ Kiểm tra local đạt: typecheck, production build, migrations (14 bảng ứn
 - Revision `quanlyrtg-00011-5wl` lúc 13:36:18 (UTC+7) nhận 100% lưu lượng. Đã mở HTTPS alias mới, đăng nhập Google bằng tài khoản admin có sẵn và quay về đúng origin mới; dashboard tải được dữ liệu, không có lỗi console trong lượt kiểm tra.
 - Supabase Site URL là https://quanlyrtg.ai.studio. Redirect allowlist có đúng origin mới và origin run.app hiện tại, mỗi origin có dạng không dấu / và có dấu / cuối; không thêm wildcard. PUBLIC_APP_URL của kết nối kho vẫn giữ run.app đã đăng ký với Google, giữ Client ID/Secret và kho hiện có.
 - Ảnh: artifacts/screenshots/short-url-live-20260927.png. Các thay đổi local lần này chỉ là tài liệu và chú thích .env.example; không cần migration hoặc build lại mã nghiệp vụ.
+
+## Đăng nhập username và quản lý mật khẩu — 27/09/2026
+
+- Thêm đăng nhập username qua Node → Supabase Auth; không có API công khai tra email từ username. Lỗi sai/khóa/chưa cấp tài khoản dùng cùng thông báo; giới hạn IP và bộ đếm theo username băm trong PostgreSQL, dùng chung các Cloud Run instance.
+- Admin cấp tài khoản trong sửa hồ sơ, mật khẩu ban đầu 123456 theo yêu cầu, bắt buộc đổi trước khi dùng API nghiệp vụ. Google chỉ dành cho Admin; người có MANAGE_HR/MANAGE_PERMISSIONS không được đặt mật khẩu hoặc tự cấp vai trò Admin.
+- Admin đặt mật khẩu mới bằng Auth Admin API phía server, không đọc mật khẩu cũ. Tên đăng nhập duy nhất, job UUID chống lặp, audit ghi ý định/kết quả không ghi mật khẩu. Khi Auth thành công nhưng DB chưa liên kết được, retry chỉ nhận tài khoản kỹ thuật có app_metadata khớp nhân sự; không liên kết tùy tiện theo email liên hệ.
+- API kiểm tra thời điểm tạo auth.sessions so với lần đổi mật khẩu, chặn phiên cũ kể cả JWT mới được refresh. Tự đổi mật khẩu xác minh mật khẩu hiện tại; không dùng email liên hệ giả của hồ sơ.
+- Migration và ledger đã áp dụng; RLS bật trên 16 bảng ứng dụng. Local typecheck/build/db:check, 28 kiểm thử backend và 16 Chrome đạt (390/768/1366/1920px). Không sửa mật khẩu thật để thử.
+- Advisor: private tables không có policy là chủ ý chặn browser; index mới chưa dùng là bình thường trước triển khai. Cảnh báo Supabase Leaked Password Protection Disabled có sẵn vẫn còn: https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection . Không tắt bảo vệ nào để chấp nhận 123456; mật khẩu ban đầu phải đổi ngay.
+- Trạng thái triển khai: đang chuẩn bị; cần cấu hình server SUPABASE_SECRET_KEY. Chưa cấp hàng loạt tài khoản hoặc đặt lại mật khẩu Admin đang dùng Google.

@@ -75,6 +75,16 @@ export async function writeRecord(
     )
   ).rows[0]?.data;
   const next = { ...(merge ? old : {}), ...redact(input), id };
+  if (module === 'employees') {
+    delete next.requiresCredentialChange;
+    if (next.username !== undefined) {
+      next.username = String(next.username).trim().toLowerCase();
+      if (next.username && !/^[a-z0-9._-]{2,64}$/.test(next.username))
+        throw new HttpError(400, 'Tên đăng nhập cần 2–64 ký tự: chữ không dấu, số, dấu chấm, gạch dưới hoặc gạch ngang.');
+      if (old && String(old.username || '').trim().toLowerCase() !== next.username && user.role !== 'ADMIN')
+        throw new HttpError(403, 'Chỉ Admin được đổi tên đăng nhập.');
+    }
+  }
   authorizeWrite(user, module, next, old);
   if (
     module === "feedbacks" &&
