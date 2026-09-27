@@ -1,5 +1,5 @@
 import { BrandLogo } from "./Brand";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Employee } from "../types";
 import { loginWithGoogle, loginWithUsername } from "../services/supabase";
 import {
@@ -32,6 +32,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loginRequest = useRef<AbortController | null>(null);
+  const [credentialWaiting, setCredentialWaiting] = useState(false);
+  const [waitSeconds, setWaitSeconds] = useState(0);
+  useEffect(() => () => loginRequest.current?.abort(), []);
+  useEffect(() => {
+    if (!credentialWaiting) return;
+    const started = Date.now();
+    const timer = setInterval(() => setWaitSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [credentialWaiting]);
 
   // Synchronize incoming external auth errors (e.g. unauthorized Google sign in attempt)
   useEffect(() => {
@@ -68,6 +78,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
   const handleCredentialSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading || loginRequest.current) return;
     const input = usernameOrEmail.trim();
     const pass = password.trim();
 
@@ -76,15 +87,22 @@ export const LoginView: React.FC<LoginViewProps> = ({
       return;
     }
 
+    const controller = new AbortController();
+    loginRequest.current = controller;
+    setWaitSeconds(0);
+    setCredentialWaiting(true);
     setLoading(true);
     setError(null);
     if (onClearAuthError) onClearAuthError();
 
     try {
-      await loginWithUsername(input, password);
+      await loginWithUsername(input, password, AbortSignal.any([controller.signal, AbortSignal.timeout(250_000)]));
     } catch (err: any) {
-      setError(err.message || "Đăng nhập thất bại.");
+      if (!controller.signal.aborted) setError(err.name === 'TimeoutError' ? 'Hết thời gian chờ đăng nhập. Vui lòng thử lại sau.' : err instanceof TypeError ? 'Mất kết nối. Vui lòng kiểm tra mạng rồi thử đăng nhập lại.' : err.message || "Đăng nhập thất bại.");
     } finally {
+      loginRequest.current = null;
+      setCredentialWaiting(false);
+      setPassword('');
       setLoading(false);
     }
   };
@@ -138,6 +156,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 autoCapitalize="none"
                 spellCheck={false}
                 required
+                disabled={loading}
                 value={usernameOrEmail}
                 onChange={(e) => {
                   setUsernameOrEmail(e.target.value);
@@ -158,6 +177,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   required
+                  disabled={loading}
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
@@ -183,6 +203,13 @@ export const LoginView: React.FC<LoginViewProps> = ({
               >
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
                 {error}
+              </div>
+            )}
+            {credentialWaiting && (
+              <div role="status" className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800 leading-relaxed">
+                <p>{waitSeconds < 3 ? 'Đang xác thực tài khoản…' : 'Đang chờ lượt xác thực. Khi nhiều người đăng nhập, có thể cần vài phút.'}</p>
+                <p className="text-xs mt-1" aria-live="off">Đã chờ {waitSeconds} giây. Bạn chỉ cần bấm đăng nhập một lần.</p>
+                <button type="button" className="mt-2 underline underline-offset-4" onClick={() => loginRequest.current?.abort()}>Hủy chờ đăng nhập</button>
               </div>
             )}
             <button

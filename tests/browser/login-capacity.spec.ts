@@ -1,0 +1,31 @@
+import { test, expect, type Route } from '@playwright/test';
+
+for (const width of [390, 1366]) test(`Login busy state, single submission and cancellation at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const requests: Route[] = [];
+  await page.route('**/api/auth/login', route => { requests.push(route); });
+  await page.goto('/');
+  await page.getByLabel('Tên đăng nhập', { exact: true }).fill('synthetic-login');
+  await page.getByLabel('Mật khẩu', { exact: true }).fill('Synthetic-Password-Only');
+  await page.getByRole('button', { name: 'Đăng nhập hệ thống', exact: true }).click();
+  await expect.poll(() => requests.length).toBe(1);
+  await expect(page.getByRole('status')).toContainText('Đang chờ lượt xác thực', { timeout: 6000 });
+  await expect(page.getByRole('button', { name: 'Đăng nhập hệ thống', exact: true })).toBeDisabled();
+  await expect(page.getByLabel('Tên đăng nhập', { exact: true })).toBeDisabled();
+  expect(requests.length).toBe(1);
+  await expect(page.locator('body')).toHaveJSProperty('scrollWidth', width);
+  await page.screenshot({ path: `artifacts/screenshots/login-wait-${width}.png`, fullPage: true });
+  await requests[0].fulfill({ status: 503, json: { error: 'Hệ thống đăng nhập đang bận. Vui lòng chờ một lúc rồi thử lại.' } });
+  await expect(page.getByRole('alert')).toContainText('đang bận');
+  await expect(page.getByRole('alert')).not.toContainText('mật khẩu không đúng');
+  await expect(page.getByLabel('Mật khẩu', { exact: true })).toHaveValue('');
+  await page.getByLabel('Mật khẩu', { exact: true }).fill('Synthetic-Password-Only');
+  await page.getByRole('button', { name: 'Đăng nhập hệ thống', exact: true }).click();
+  await expect.poll(() => requests.length).toBe(2);
+  await page.getByRole('button', { name: 'Hủy chờ đăng nhập' }).click();
+  await expect(page.getByRole('button', { name: 'Đăng nhập hệ thống', exact: true })).toBeEnabled();
+  await expect(page.getByRole('status')).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByLabel('Mật khẩu', { exact: true })).toHaveValue('');
+  await requests[1].abort().catch(() => {});
+});

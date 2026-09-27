@@ -46,7 +46,7 @@ test('collection reads remain bounded and a failed read releases its slot', asyn
   assert.equal(results.filter(r => r.status === 'fulfilled').length, 99);
 });
 
-test('80 simultaneous synthetic logins, scoped startup reads and permission revocation', { timeout: 120000 }, async () => {
+test('80 simultaneous synthetic logins, scoped startup reads and permission revocation', { timeout: 240000 }, async () => {
   // Entire test is isolated: in-memory PostgreSQL and fake Auth provider only.
   // No credentials, employee records, or requests from production are used.
   process.env.NODE_ENV = 'test';
@@ -72,6 +72,7 @@ test('80 simultaneous synthetic logins, scoped startup reads and permission revo
   (pool as any).query = async (sql: string, args: any[] = []) => { const release = await lock(); try { return await rawQuery(sql,args); } finally { release(); } };
   (pool as any).connect = async () => { const release = await lock(); return { query: rawQuery, release }; };
   let authChecks = 0, providerStatus = 200;
+  let grantTokens = 30, grantLast = performance.now(), providerRateLimits = 0;
   const token = (u: typeof users[number]) => ['test', Buffer.from(JSON.stringify({sub:u.id,session_id:u.session,amr:[{method:'password'}],exp:Math.floor(Date.now()/1000)+3600})).toString('base64url'), 'signature'].join('.');
   let localOrigin = '';
   globalThis.fetch = async (input, init) => {
@@ -82,6 +83,10 @@ test('80 simultaneous synthetic logins, scoped startup reads and permission revo
     if (providerStatus !== 200) return Response.json({msg:'test provider unavailable'},{status:providerStatus});
     let u: typeof users[number] | undefined;
     if (url.pathname === '/auth/v1/token') {
+      const now = performance.now();
+      grantTokens = Math.min(30, grantTokens + (now - grantLast) / 2000); grantLast = now;
+      if (grantTokens < 1) { providerRateLimits++; return Response.json({msg:'simulated token bucket empty'},{status:429}); }
+      grantTokens--;
       const credentials = JSON.parse(String(init?.body));
       u = users.find(x => x.email === credentials.email);
       assert.equal(credentials.password,'Synthetic-Test-Password!');
@@ -101,7 +106,7 @@ test('80 simultaneous synthetic logins, scoped startup reads and permission revo
   let requests = 0, errors = 0;
   const send = async (phase:string, path:string, init:RequestInit={}, expected=200) => {
     const start = performance.now();
-    const response = await fetch(localOrigin+path,{...init,signal:AbortSignal.timeout(20000)});
+    const response = await fetch(localOrigin+path,{...init,signal:AbortSignal.timeout(phase==='login'?210000:20000)});
     (timings[phase] ||= []).push(performance.now()-start); requests++;
     if(response.status!==expected) errors++;
     assert.equal(response.status,expected,`${phase}: ${path}`);
@@ -109,6 +114,7 @@ test('80 simultaneous synthetic logins, scoped startup reads and permission revo
   };
   try {
     const sessions = await Promise.all(users.map(u => send('login','/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u.username,password:'Synthetic-Test-Password!'})})));
+    assert.equal(providerRateLimits,0,'login pacing must stay within the simulated provider token quota');
     const modules = ['employees','internalDocuments','questionFolders','questionBank','quizzes','quizSubmissions','feedbacks','zaloMessages','bxxlRecords','leaveRequests','incidents','settings'];
     await Promise.all(users.map(async (u,i) => {
       const queue = createRequestQueue(3), headers = {Authorization:'Bearer '+sessions[i].access_token};
@@ -133,7 +139,7 @@ test('80 simultaneous synthetic logins, scoped startup reads and permission revo
     assert.equal(authChecks-before,2,'completed verification is never cached');
     providerStatus=429;
     await assert.rejects(()=>verifyAccessToken(process.env.SUPABASE_URL!,process.env.SUPABASE_PUBLISHABLE_KEY!,sessions[3].access_token),(e:any)=>e.status===503);
-    const report = {testedAt:new Date().toISOString(),users:80,requests,unexpectedErrors:errors,authChecks,environment:'Local Express; PGlite serialized transactions; fake Auth with 75ms delay; no production traffic',phases:Object.fromEntries(Object.entries(timings).map(([name,values])=>{values.sort((a,b)=>a-b);return [name,{requests:values.length,p95ms:Math.round(values[Math.ceil(values.length*.95)-1]),maxMs:Math.round(values.at(-1)!)}];}))};
+    const report = {testedAt:new Date().toISOString(),users:80,requests,unexpectedErrors:errors,authChecks,providerRateLimits,environment:'Local Express; PGlite serialized transactions; fake Auth with 75ms delay, burst 30, refill 150/5min; no production traffic',phases:Object.fromEntries(Object.entries(timings).map(([name,values])=>{values.sort((a,b)=>a-b);return [name,{requests:values.length,p95ms:Math.round(values[Math.ceil(values.length*.95)-1]),maxMs:Math.round(values.at(-1)!)}];}))};
     await mkdir('artifacts',{recursive:true}); await writeFile('artifacts/capacity-80.json',JSON.stringify(report,null,2));
     console.log(JSON.stringify(report));
     await db.exec('begin; insert into public.record_changes(module) select \'employees\' from generate_series(1,80); insert into public.record_changes(module) values(\'settings\'); commit;');

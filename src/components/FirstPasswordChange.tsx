@@ -35,6 +35,7 @@ export function FirstPasswordChange({ onComplete }: { onComplete: () => Promise<
       </label>
       <button type="button" aria-pressed={visible} onClick={() => setVisible(x => !x)} className="text-sm flex items-center gap-2 text-sky-700">{visible ? <EyeOff size={17} /> : <Eye size={17} />}{visible ? 'Ẩn mật khẩu mới' : 'Hiện mật khẩu mới'}</button>
       <button type="submit" disabled={busy} className="bg-sky-700 hover:bg-sky-800 text-white rounded-xl p-3 font-bold w-full disabled:opacity-60">{busy ? 'Đang đổi mật khẩu…' : 'Đổi mật khẩu và tiếp tục'}</button>
+      {busy && <p role="status" className="text-sm text-sky-700">Khi nhiều người truy cập, xác thực có thể cần vài phút. Vui lòng giữ trang này mở.</p>}
       <button type="button" disabled={busy} onClick={() => void logoutUser()} className="text-slate-500 text-sm w-full">Đăng xuất</button>
     </form>
   </main>;

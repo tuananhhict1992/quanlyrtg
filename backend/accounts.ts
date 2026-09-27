@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'node:crypto';
 import { pool, transaction, HttpError, asyncRoute } from './db';
 import { audit } from './records';
+import { AUTH_BUSY, LOGIN_DEADLINE_MS, pacedPasswordSignIn } from './login-admission';
 
 export const INVALID_LOGIN = 'Tên đăng nhập hoặc mật khẩu không đúng, hoặc tài khoản chưa được cấp quyền.';
 export const normalizeUsername = (value: unknown) => typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -16,7 +17,7 @@ export function validateUsername(value: unknown) {
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 export const accountEmail = (employeeId: string) => `rtg.${hash(employeeId).slice(0,40)}@accounts.invalid`;
 export const accountAdminConfigured = () => !!(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
-export function authClient(admin = false) {
+export function authClient(admin = false, signal?: AbortSignal) {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const key = admin ? (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY) :
     (process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY);
@@ -24,7 +25,7 @@ export function authClient(admin = false) {
     throw new HttpError(503, admin ? 'Chưa cấu hình khóa quản trị Supabase trên máy chủ.' : 'Chưa cấu hình Supabase trên máy chủ.');
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    global: { fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(10000) }) },
+    global: { fetch: (input, init) => fetch(input, { ...init, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000) }) },
   });
 }
 export function assertAccountAdmin(user: any) {
@@ -38,11 +39,11 @@ export function validateNewPassword(value: unknown, initial = false) {
   return value;
 }
 // Shared database limiter works across Cloud Run instances. Store only a hash, never identifiers/passwords.
-export async function loginByUsername(usernameInput: unknown, password: unknown, clientFactory = authClient) {
+export async function loginByUsername(usernameInput: unknown, password: unknown, clientFactory = authClient, signal = AbortSignal.timeout(LOGIN_DEADLINE_MS)) {
   const username = normalizeUsername(usernameInput);
   if (!/^[a-z0-9._-]{2,64}$/.test(username) || typeof password !== 'string' || !password || password.length > 128)
     throw new HttpError(401, INVALID_LOGIN);
-  const client = clientFactory();
+  const client = clientFactory(false, signal);
   const key = hash(username);
   await pool.query('delete from private.login_limits where expires_at < now()');
   const limit = (await pool.query(`insert into private.login_limits(key_hash,attempts,expires_at) values($1,1,now()+interval '15 minutes')
@@ -51,7 +52,15 @@ export async function loginByUsername(usernameInput: unknown, password: unknown,
   const row = (await pool.query(`select a.auth_user_id,u.email from private.records r
     join private.accounts a on a.employee_id=r.id join auth.users u on u.id=a.auth_user_id
     where r.module='employees' and lower(btrim(r.data->>'username'))=$1 and r.data->>'status'='ACTIVE'`, [username])).rows[0];
-  const { data, error } = await client.auth.signInWithPassword({ email: row?.email || 'unassigned@accounts.invalid', password });
+  let result;
+  try {
+    result = await pacedPasswordSignIn(client, { email: row?.email || 'unassigned@accounts.invalid', password }, signal);
+  } catch (error) {
+    // Infrastructure failures / cancelled waits must not lock a valid account.
+    await pool.query('update private.login_limits set attempts=greatest(0,attempts-1) where key_hash=$1', [key]);
+    throw new HttpError(503, AUTH_BUSY);
+  }
+  const { data, error } = result;
   if (error || !row || data.user?.id !== row.auth_user_id || !data.session)
     throw new HttpError(401, INVALID_LOGIN);
   await pool.query('delete from private.login_limits where key_hash=$1', [key]);
@@ -137,10 +146,16 @@ export async function changeOwnPassword(actor: any, authUser: any, body: any, cl
   if (typeof body?.currentPassword !== 'string' || body.currentPassword.length > 128 || body.currentPassword === password)
     throw new HttpError(400, 'Nhập mật khẩu hiện tại và chọn mật khẩu mới khác mật khẩu cũ.');
   const client = clientFactory();
+  const signal = AbortSignal.timeout(LOGIN_DEADLINE_MS);
+  // Wait for Auth capacity before taking a DB connection / personnel lock.
+  const baseline = (await pool.query('select credentials_changed_at::text as changed_at from private.accounts where auth_user_id=$1 and employee_id=$2', [authUser.id, actor.id])).rows[0];
+  const verified = await pacedPasswordSignIn(client, { email: authUser.email, password: body.currentPassword }, signal);
+  if (verified.error || verified.data.user?.id !== authUser.id) throw new HttpError(400, 'Mật khẩu hiện tại không đúng.');
   await transaction(async db => {
     await db.query('select pg_advisory_xact_lock(hashtextextended($1,0))', ['employees:' + actor.id]);
-    const verified = await client.auth.signInWithPassword({ email: authUser.email, password: body.currentPassword });
-    if (verified.error || verified.data.user?.id !== authUser.id) throw new HttpError(400, 'Mật khẩu hiện tại không đúng.');
+    const current = (await db.query('select credentials_changed_at::text as changed_at from private.accounts where auth_user_id=$1 and employee_id=$2', [authUser.id, actor.id])).rows[0];
+    if (!baseline || !current || baseline.changed_at !== current.changed_at)
+      throw new HttpError(400, 'Mật khẩu vừa được thay đổi ở phiên khác. Vui lòng đăng nhập lại.');
     // Update using the user's verified session; no admin key is needed for self-service changes.
     const updated = await client.auth.updateUser({ password });
     if (updated.error) throw new HttpError(400, 'Không thể đổi mật khẩu. Hãy chọn mật khẩu mạnh hơn và thử lại.');
@@ -148,14 +163,23 @@ export async function changeOwnPassword(actor: any, authUser: any, body: any, cl
     await audit(db, actor.id, 'account.password.change', 'employees', actor.id);
   });
   // Create a fresh session after the cut-off; old sessions remain blocked even if refreshed.
-  const fresh = await client.auth.signInWithPassword({ email: authUser.email, password });
-  if (fresh.error || !fresh.data.session) return { success: true, signInAgain: true };
+  const fresh = await pacedPasswordSignIn(client, { email: authUser.email, password }, signal).catch(() => null);
+  if (!fresh || fresh.error || !fresh.data.session) return { success: true, signInAgain: true };
   return { success: true, session: { access_token: fresh.data.session.access_token, refresh_token: fresh.data.session.refresh_token } };
 }
 
 export const publicAccountsRouter = Router();
 publicAccountsRouter.post('/login', rateLimit({ windowMs: 300000, limit: 100, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Đã thử nhiều lần. Vui lòng thử lại sau.' } }), json({ limit: '4kb' }),
-  asyncRoute(async (req, res) => { res.set('Cache-Control', 'no-store'); res.json(await loginByUsername(req.body?.username, req.body?.password)); }));
+  asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const cancelled = new AbortController();
+    const disconnect = () => { if (!res.writableEnded) cancelled.abort(); };
+    res.on('close', disconnect);
+    const signal = AbortSignal.any([cancelled.signal, AbortSignal.timeout(LOGIN_DEADLINE_MS)]);
+    try { res.json(await loginByUsername(req.body?.username, req.body?.password, authClient, signal)); }
+    catch (error) { if ((error as any)?.status === 503) res.set('Retry-After', '15'); throw error; }
+    finally { res.off('close', disconnect); if (req.body) req.body.password = undefined; }
+  }));
 export const accountsRouter = Router();
 accountsRouter.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 accountsRouter.get('/admin/accounts/:id', asyncRoute(async (req, res) => res.json(await accountStatus(req.user, req.params.id, req.authUser.id))));

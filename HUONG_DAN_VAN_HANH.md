@@ -283,3 +283,9 @@ Mở Công cụ xử lý dữ liệu tự động, chọn hoặc kéo thả Exce
 ### Vi phạm và sự cố
 
 Người có quyền MANAGE_VIOLATIONS chọn file để trích xuất, kiểm tra và xóa dòng không cần ở Bảng đối soát, sau đó bấm Đồng bộ vào Hồ sơ Nhân sự (Nội bộ). Chỉ khi server xác nhận thành công các dòng mới rời bảng đối soát; đồng bộ toàn bộ thành công sẽ để bảng trống. Dữ liệu đã lưu xem ở Đã đồng bộ. Nếu lỗi, giữ bản đối soát và thử lại; hệ thống chống ghi/trừ điểm trùng. Người chỉ xem được cấp tab Vi phạm sẽ tự nhận các vụ việc đã đồng bộ qua Realtime, không cần thao tác Google/Excel. Các dòng chưa khớp nhân viên cần đối soát lại trước xác nhận.
+
+### Khi nhiều người đăng nhập cùng lúc (gói miễn phí)
+
+Bấm Đăng nhập hệ thống một lần và giữ trang mở. Nếu đang chờ lượt xác thực, hệ thống hiện số giây và tự thử lại lỗi tạm thời; có nút Hủy chờ đăng nhập. Với khoảng 80 lượt dồn cùng lúc, một số người có thể chờ vài phút. Nếu hết thời gian chờ, đợi một lúc rồi nhập lại mật khẩu. Sai mật khẩu sẽ báo riêng, không tự thử liên tục.
+
+Trước buổi kiểm tra tập trung, mỗi người nên đăng nhập và đổi mật khẩu ban đầu trước. Duy trì phiên đăng nhập hợp lệ để không cần cùng xác thực lại vào thời điểm bắt đầu. Không chia sẻ mật khẩu hoặc bỏ bước đổi mật khẩu ban đầu.

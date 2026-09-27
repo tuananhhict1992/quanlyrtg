@@ -62,6 +62,10 @@ test('username access, Admin-only provisioning/reset, idempotency, first passwor
     assert.equal((await accountStatus(admin,'e1')).linked,true);
     assert.equal((await accountStatus(admin,'e1')).must_change_password,true);
     assert.deepEqual(await loginByUsername(' NV001 ','123456',factory),{access_token:'test-access',refresh_token:'test-refresh'});
+    // Cancelled infrastructure waits must not consume the password-failure budget.
+    const cancelled = new AbortController(); cancelled.abort();
+    for (let i=0;i<12;i++) await assert.rejects(loginByUsername('nv001','123456',factory,cancelled.signal),(e:any)=>e.status===503);
+    await loginByUsername('nv001','123456',factory);
     for (const [name, pass] of [['nv001','wrong'], ['missing','123456'], ['person@example.com','123456']])
       await assert.rejects(() => loginByUsername(name,pass,factory),(e:any)=>e.status===401 && e.message===INVALID_LOGIN);
     await assert.rejects(() => changeOwnPassword({id:'e1'},{id:authId,email:accountEmail('e1')},{currentPassword:'wrong',password:'MyNewPassword9'},factory),(e:any)=>e.status===400);
@@ -70,6 +74,16 @@ test('username access, Admin-only provisioning/reset, idempotency, first passwor
     assert.equal((await accountStatus(admin,'e1')).must_change_password,false);
     await assert.rejects(() => loginByUsername('nv001','123456',factory),(e:any)=>e.status===401);
     await loginByUsername('nv001','MyNewPassword9',factory);
+    const concurrentResetFactory:any = () => {
+      const client = factory();
+      return {auth:{...client.auth, signInWithPassword:async(input:any)=>{
+        const result=await client.auth.signInWithPassword(input);
+        await query('update private.accounts set credentials_changed_at=clock_timestamp() where auth_user_id=$1',[authId]);
+        return result;
+      }}};
+    };
+    await assert.rejects(changeOwnPassword({id:'e1'},{id:authId,email:accountEmail('e1')},{currentPassword:'MyNewPassword9',password:'MustNotOverwrite9'},concurrentResetFactory),(e:any)=>e.status===400);
+    assert.equal(passwords.get(authId),'MyNewPassword9','a reset during the Auth wait must not be overwritten');
     const beforeInitialOnly = updates;
     await setEmployeePassword(admin,'e1',{...task,job_id:randomUUID()},factory,true);
     assert.equal(updates,beforeInitialOnly,'bulk initial provisioning must not reset existing password');

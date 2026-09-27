@@ -64,17 +64,20 @@ export async function api<T = any>(
   if (!res.ok) throw new Error(data.error || "Không thể thực hiện yêu cầu.");
   return data;
 }
-export async function loginWithUsername(username: string, password: string) {
+export async function loginWithUsername(username: string, password: string, signal?: AbortSignal) {
   if (!configured)
     throw new Error(
       "Chưa cấu hình Supabase. Xem hướng dẫn triển khai trong README.",
     );
   const response = await fetch('/api/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }), cache: 'no-store',
+    body: JSON.stringify({ username, password }), cache: 'no-store', signal,
   });
-  const session = await response.json();
+  const session = await response.json().catch(() => ({}));
+  if (response.status === 503 || response.status === 504)
+    throw new Error('Hệ thống đăng nhập đang bận. Vui lòng chờ một lúc rồi thử lại.');
   if (!response.ok) throw new Error(session.error || 'Không thể đăng nhập.');
+  signal?.throwIfAborted();
   const { data, error } = await supabase.auth.setSession(session);
   if (error) throw error;
   return data.user;
