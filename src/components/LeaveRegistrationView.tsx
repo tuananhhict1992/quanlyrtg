@@ -42,6 +42,7 @@ interface LeaveRegistrationViewProps {
   onApproveLeaveRequest: (requestId: string, approverName: string) => Promise<void>;
   onRejectLeaveRequest: (requestId: string, approverName: string, reason: string) => Promise<void>;
   onDeleteLeaveRequest?: (requestId: string) => Promise<void>;
+  onNotifyZalo?: (request: LeaveRequest) => void;
 }
 
 const LEAVE_TYPE_LABELS: Record<string, { label: string; color: string }> = {
@@ -84,6 +85,7 @@ export const LeaveRegistrationView: React.FC<LeaveRegistrationViewProps> = ({
   onApproveLeaveRequest,
   onRejectLeaveRequest,
   onDeleteLeaveRequest,
+  onNotifyZalo,
 }) => {
   // Calendar month state
   const today = new Date();
@@ -1104,6 +1106,7 @@ export const LeaveRegistrationView: React.FC<LeaveRegistrationViewProps> = ({
 
                       {/* Phê duyệt / Thao tác (Admin / Quản lý) */}
                       <td className="py-3.5 px-4 text-right">
+                        {(currentUser.role === 'ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_LEAVE')) && userCanApproveThis && onNotifyZalo && <button type="button" className="mb-2 px-3 py-2 rounded-lg border text-blue-700 text-xs font-semibold" onClick={() => onNotifyZalo(req)}>Thông báo Zalo</button>}
                         {isPending && userCanApproveThis ? (
                           <div className="flex items-center justify-end gap-1.5">
                             {/* Nút Duyệt */}

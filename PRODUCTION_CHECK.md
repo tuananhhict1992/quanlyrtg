@@ -60,3 +60,10 @@ Các dashboard/biểu mẫu cũ vẫn cần một tập dữ liệu đầy đủ
 Build còn cảnh báo chunk JavaScript trên 500 kB (entry và module thi). Module đã lazy load; cần đo tải trên thiết bị thực trước khi tối ưu sâu hơn.
 
 Mẫu import Google mới sử dụng snapshot báo cáo của RTG. Tệp Sheets cũ theo cột vẫn có thể xuất XLSX rồi dùng parser Excel cũ; cần đối chiếu bản xem trước trước khi nhập. Không dùng Sheets làm nguồn dữ liệu đọc thường xuyên cho ứng dụng.
+# Cập nhật thông báo Zalo — 27/09/2026
+
+- Thay màn hình soạn thông báo nội bộ bằng Zalo OA: nguồn vi phạm, giao bài, phép; chọn cá nhân/Ca/tập thể, nội dung và Preview trước Confirm. Giữ lịch sử nội bộ và giao bài cũ.
+- 26/26 kiểm thử backend đạt; ca 76 người nhận được tách đúng UID, retry không gửi lại success/unknown. Typecheck, build, migration cục bộ và các kiểm thử giao diện 390/768/1366/1920px đạt. Test nút giao bài đã cập nhật theo nhãn “Giao bài & soạn Zalo” và chạy lại thành công.
+- Migration `20260927021032_zalo_notifications.sql` đã áp dụng vào `utcpdfiyaqnimdasttak`, SHA-256 `105e45810a0dc8847c2482c59b7f6e209a735fef2ca09a3b911af1a2d01ab133`. Ba bảng private bật RLS, không cho anon/authenticated SELECT. Không có thông báo thật được tạo khi kiểm thử.
+- Supabase advisor hiện có thông tin RLS không policy trên bảng private chỉ server truy cập (chủ đích) và cảnh báo Auth leaked-password protection chưa bật. Không thay Auth hoặc quyền truy cập để xử lý thông báo.
+- Người dùng chưa có OA. Chưa xác nhận được gửi Zalo thật; chưa có ZBS template / OAuth refresh tự động. Xem `HUONG_DAN_ZALO.md` về các điều kiện kết nối, token và worker hẹn giờ.

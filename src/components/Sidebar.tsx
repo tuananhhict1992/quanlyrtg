@@ -138,7 +138,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'zalo',
-      label: 'Tin nhắn nội bộ',
+      label: 'Thông báo Zalo',
       sublabel: 'Cá nhân, Ca trực, Toàn thể',
       icon: BellRing,
       requiresPermission: 'MANAGE_ZALO',
@@ -327,7 +327,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-blue-600">{currentUser.zaloPhone}</span>
           </div>
           <p className="text-[10px] text-slate-400">
-            Hệ thống tự động thông báo kết quả thi & duyệt đề xuất qua Zalo.
+            Thông báo qua Zalo OA sau khi người có thẩm quyền xác nhận.
           </p>
         </div>
       </aside>

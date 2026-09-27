@@ -430,7 +430,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-indigo-300 transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500">Tin nhắn nội bộ</span>
+            <span className="text-xs font-semibold text-slate-500">Thông báo Zalo</span>
             <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-105 transition-transform">
               <BellRing className="w-5 h-5" />
             </div>
@@ -623,7 +623,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             onClick={() => setActiveTab('zalo')}
             className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
           >
-            Trung tâm Tin nhắn nội bộ →
+            Trung tâm Thông báo Zalo →
           </button>
         </div>
 

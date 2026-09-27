@@ -39,6 +39,7 @@ export function isTabAllowed(tabId: TabType, user: Employee | null | undefined):
 
   // 4. Kiểm tra quyền nghiệp vụ bắt buộc tương ứng của Tab (nếu có)
   const requiredPerm = TAB_REQUIRED_PERMISSIONS[tabId];
+  if (tabId === 'zalo') return ['MANAGE_ZALO', 'MANAGE_VIOLATIONS', 'MANAGE_LEAVE', 'MANAGE_QUIZ', 'CREATE_QUIZ', 'MANAGE_FEEDBACK'].some(p => user.assignedPermissions?.includes(p as PermissionKey));
   if (requiredPerm) {
     const userPermissions = user.assignedPermissions || [];
     if (!userPermissions.includes(requiredPerm)) {

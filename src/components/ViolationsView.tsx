@@ -56,6 +56,7 @@ interface ViolationsViewProps {
   currentUser: Employee;
   employees: Employee[];
   incidents?: IncidentViolation[];
+  onNotifyZalo?: (incident: IncidentViolation) => void;
   onUpdateIncidents?: (updated: IncidentViolation[]) => void;
   onUpdateEmployee: (updated: Employee) => void;
   onBatchUpdateEmployees?: (updatedList: Employee[]) => void;
@@ -71,6 +72,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   employees,
   incidents: propIncidents,
   onUpdateIncidents,
+  onNotifyZalo,
   onUpdateEmployee,
   onBatchUpdateEmployees,
   onAddEmployee,
@@ -1734,6 +1736,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
               <div>
+                {(currentUser.role === 'ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_VIOLATIONS')) && selectedIncidentForDetail.isRtgRelated && onNotifyZalo && <button type="button" className="px-4 py-2 rounded-lg bg-blue-700 text-white" onClick={() => { onNotifyZalo(selectedIncidentForDetail); setSelectedIncidentForDetail(null); }}>Thông báo Zalo</button>}
                 {canManageViolations && !selectedIncidentForDetail.isSyncedToProfile ? (
                   <button
                     onClick={() => {

@@ -61,6 +61,10 @@ async function authenticated(page: any, includeArchive = false) {
     }
     let body: any = { success: true };
     if (u.pathname === "/api/me") body = admin;
+    else if (u.pathname === '/api/zalo/notifications') body = [];
+    else if (u.pathname === '/api/zalo/audience') body = {configured:false,canBroadcast:true,recipients:[{id:admin.id,name:admin.fullName,department:admin.department,linked:false}]};
+    else if (u.pathname === '/api/zalo/preview') body = {checksum:'preview-test',configured:false,recipients:[{id:admin.id,name:admin.fullName,department:admin.department,linked:false}],missing:[admin.fullName],text:'Thông báo RTG\n\nNội dung kiểm thử',deliveryCount:1,sendAt:null};
+    else if (u.pathname === '/api/zalo/targets') body = {configured:false,oaId:'',targets:[]};
     else if (u.pathname === "/api/google/import/preview")
       body = {
         job_id: "preview-test",
@@ -118,13 +122,24 @@ for (const width of [390, 768, 1366, 1920]) {
       path: `artifacts/screenshots/dashboard-${width}.png`,
       fullPage: true,
     });
-    for (const module of ["hr", "permissions"]) {
+    for (const module of ["hr", "permissions", "zalo"]) {
       if (width < 1024)
         await page
           .getByRole("button", { name: "Mở menu", exact: true })
           .click();
       await page.getByTestId("nav-" + module).click();
       await expect(page.locator("main")).toBeVisible();
+      if (module === 'zalo') {
+        await page.getByRole('button',{name:'Soạn thông báo Zalo',exact:true}).click();
+        await page.getByRole('textbox',{name:'Nội dung Zalo',exact:true}).fill('Nội dung kiểm thử');
+        await page.getByRole('combobox',{name:'Phạm vi nhận',exact:true}).selectOption('DEPARTMENT');
+        await page.getByRole('combobox',{name:'Chọn Ca RTG',exact:true}).selectOption('RTG ca 1');
+        await page.getByRole('button',{name:'Xem trước thông báo',exact:true}).click();
+        await expect(page.getByRole('button',{name:'Xác nhận gửi Zalo',exact:true})).toBeDisabled();
+        await expect(page.getByText('Chưa cấu hình Zalo OA trên server. Chưa có tin nào được gửi.')).toBeVisible();
+        await page.screenshot({path:`artifacts/screenshots/zalo-preview-${width}.png`,fullPage:true});
+        await page.getByRole('button',{name:'Đóng',exact:true}).click();
+      }
       await page.screenshot({
         path: `artifacts/screenshots/${module}-${width}.png`,
         fullPage: true,
@@ -282,14 +297,15 @@ test('Quiz assignment waits for saved quiz, keeps errors visible, and blocks rep
   await expect(page.getByRole('heading',{name:'Giao bài & Thông báo',exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'Lưu & Giao bài',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Giao bài & Thông báo',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Giao bài & Gửi thông báo',exact:true}).click();
+  await page.getByRole('button',{name:'Giao bài & soạn Zalo',exact:true}).click();
   await expect(page.getByRole('alert')).toContainText('Giao bài thất bại giả lập');
-  await page.getByRole('button',{name:'Giao bài & Gửi thông báo',exact:true}).click();
+  await page.getByRole('button',{name:'Giao bài & soạn Zalo',exact:true}).click();
   await expect(page.getByRole('button',{name:'Đang giao bài...',exact:true})).toBeDisabled();
   expect(assignCalls).toBe(2);
   releaseAssign();
   await expect(page.getByRole('heading',{name:'Giao bài & Thông báo',exact:true})).toHaveCount(0);
-  await expect(page.getByText('Đã gửi 76 thông báo giao bài.',{exact:true})).toBeVisible();
+  await expect(page.getByRole('dialog',{name:'Soạn thông báo Zalo',exact:true})).toBeVisible();
+  await expect(page.getByRole('combobox',{name:'Phạm vi nhận',exact:true})).toHaveValue('ALL');
   expect(errors).toEqual([]);
 });
 

@@ -6,6 +6,7 @@ import { recordsRouter } from "./backend/records";
 import { googleRouter } from "./backend/google-routes";
 import { finishGoogleOAuth } from "./backend/google-oauth";
 import { filesRouter, validateFile } from "./backend/files";
+import { zaloRouter } from "./backend/zalo-notifications";
 import { examsRouter } from "./backend/exams";
 import { operationsRouter } from "./backend/operations";
 import { startWorker } from "./backend/worker";
@@ -118,14 +119,8 @@ app.use("/api/extract-document", (req: any, _res, next) => {
     next(e);
   }
 });
-app.use("/api/zalo", (req: any, _res, next) => {
-  try {
-    assertPermission(req.user, "MANAGE_ZALO");
-    next();
-  } catch (e) {
-    next(e);
-  }
-});
+app.use("/api/zalo/send", rateLimit({ windowMs: 60000, limit: 10, keyGenerator: (req: any) => req.user.id }));
+app.use("/api/zalo", zaloRouter);
 app.use(
   ["/api/extract-document", "/api/ai"],
   asyncRoute(async (req: any, _res, next) => {
@@ -329,123 +324,6 @@ Nhiệm vụ của bạn:
     console.error("Lỗi tạo câu hỏi bằng AI:", error);
     return res.status(500).json({
       error: "Không thể phân tích tài liệu để tạo câu hỏi bằng AI.",
-    });
-  }
-});
-
-// 5. Zalo Messaging Gateway & OpenAPI Integration
-app.post("/api/zalo/send", async (req: Request, res: Response) => {
-  try {
-    const {
-      recipientType,
-      recipients,
-      title,
-      content,
-      sentBy,
-      oaAccessToken,
-      webhookUrl,
-      mode = "DIRECT_CHAT",
-    } = req.body;
-
-    const count = Array.isArray(recipients) ? recipients.length : 1;
-    const messageId =
-      "ZNS-" + Math.random().toString(36).substring(2, 9).toUpperCase();
-    const timestamp = new Date().toISOString();
-
-    console.log(
-      `[Zalo Gateway] Processing message: "${title}" for ${count} recipient(s) via mode: ${mode}`,
-    );
-
-    let oaResponse: any = null;
-    let oaSuccess = false;
-
-    // A. Check if Official Account Access Token is provided
-    const token = process.env.ZALO_OA_ACCESS_TOKEN;
-    if (token && mode === "OFFICIAL_ACCOUNT") {
-      try {
-        console.log(
-          `[Zalo Gateway] Attempting dispatch via Zalo OA OpenAPI...`,
-        );
-        // Calling Zalo OpenAPI endpoint
-        // Note: For real Zalo OA, message sending endpoint is:
-        // POST https://openapi.zalo.me/v2.0/oa/message
-        const recipientList = Array.isArray(recipients) ? recipients : [];
-        const firstPhone = recipientList[0]?.phone;
-
-        const response = await fetch(
-          "https://openapi.zalo.me/v2.0/oa/message",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              access_token: token,
-            },
-            body: JSON.stringify({
-              recipient: {
-                user_id: firstPhone || "sample_user_id",
-              },
-              message: {
-                text: `📢 ${title}\n\n${content}\n\n---\n👤 Gửi bởi: ${sentBy || "Ban Điều Hành RTG"}`,
-              },
-            }),
-          },
-        );
-
-        oaResponse = await response.json();
-        oaSuccess = oaResponse?.error === 0;
-        console.log("[Zalo Gateway] Zalo OpenAPI Response:", oaResponse);
-      } catch (oaErr: any) {
-        console.warn(
-          "[Zalo Gateway] Zalo OpenAPI request error:",
-          oaErr?.message,
-        );
-        oaResponse = { error: -1, message: oaErr?.message };
-      }
-    }
-
-    // B. Check if Webhook URL is provided
-    if (process.env.ZALO_WEBHOOK_URL) {
-      try {
-        console.log(`[Zalo Gateway] Dispatching to Webhook: ${webhookUrl}`);
-        await fetch(process.env.ZALO_WEBHOOK_URL!, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event: "zalo_message_dispatched",
-            messageId,
-            timestamp,
-            title,
-            content,
-            sentBy,
-            recipients,
-          }),
-        });
-      } catch (whErr: any) {
-        console.warn("[Zalo Gateway] Webhook request error:", whErr?.message);
-      }
-    }
-
-    return res.json({
-      success: true,
-      messageId,
-      znsMessageId: messageId,
-      timestamp,
-      status: "DELIVERED",
-      totalSent: count,
-      mode: token ? "OFFICIAL_ACCOUNT" : webhookUrl ? "WEBHOOK" : "DIRECT_CHAT",
-      oaResult: oaResponse,
-      oaSuccess,
-      details: token
-        ? oaSuccess
-          ? `Đã phát tin qua cổng Zalo OA chính thức tới ${count} nhân sự.`
-          : `Đã kết nối cổng Zalo OA (Mã giao dịch: ${messageId}).`
-        : `Đã ghi nhận nhật ký điều hành và hỗ trợ phát tin Zalo tới ${count} nhân sự.`,
-    });
-  } catch (err: any) {
-    console.error("[Zalo Gateway] Exception in /api/zalo/send:", err);
-    return res.status(500).json({
-      success: false,
-      error: "Không thể xử lý tin nhắn Zalo.",
     });
   }
 });

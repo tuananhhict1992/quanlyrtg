@@ -54,7 +54,7 @@ interface FeedbackViewProps {
     customPenaltyPoints?: number
   ) => void;
   onClearApprovedFeedbackImages?: (feedbackIds: string[]) => void;
-  onSendZaloNotification?: (title: string, content: string, empName: string, empPhone: string) => void;
+  onSendZaloNotification?: (title: string, content: string, empName: string, empPhone: string, feedbackId?: string, employeeId?: string) => void;
   onDeleteFeedback?: (id: string) => void;
   onBackToDashboard?: () => void;
 }
@@ -284,7 +284,7 @@ export const FeedbackView: React.FC<FeedbackViewProps> = ({
         `[PHẢN HỒI ĐỀ XUẤT] ${activeFeedbackDetail.title}`,
         `Chào bạn, đề xuất của bạn đã được ${currentUser.fullName} xử lý với trạng thái: ${status}. Nội dung: "${adminComment}"`,
         activeFeedbackDetail.authorName,
-        authorPhone
+        authorPhone, activeFeedbackDetail.id, authorEmp?.id
       );
     }
 

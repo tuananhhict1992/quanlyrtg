@@ -135,7 +135,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               type="button"
               onClick={onToggleChat}
               className="relative flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs hover:shadow-indigo-200"
-              title="Mở cửa sổ Chat nhanh để nhận, đọc và gửi tin tức thì"
+              title="Mở lịch sử nội bộ và soạn thông báo Zalo"
             >
               <MessageSquare className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Cửa Sổ Chat</span>

@@ -371,7 +371,7 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
             )}
           </div>
           <div className="text-left">
-            <div className="text-xs font-bold leading-tight">Cửa Sổ Chat Nhanh</div>
+            <div className="text-xs font-bold leading-tight">Lịch sử & Soạn Zalo</div>
             <div className="text-[10px] text-indigo-100">
               {activeChannel === 'ALL'
                 ? 'Kênh Toàn thể'
@@ -402,7 +402,7 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold tracking-wide">Cửa Sổ Chat Nhanh</span>
+              <span className="text-xs font-bold tracking-wide">Lịch sử & Soạn Zalo</span>
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-medium border border-emerald-400/30">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 Realtime
@@ -632,7 +632,7 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
                 </div>
                 <div className="text-xs font-bold text-slate-700">Chưa có tin nhắn trong kênh này</div>
                 <p className="text-[11px] text-slate-400 max-w-xs leading-relaxed">
-                  Hãy nhập tin nhắn bên dưới và bấm gửi để bắt đầu kết nối trực tiếp với đồng nghiệp!
+                  Lịch sử này chỉ nằm trong ứng dụng. Nhập nội dung bên dưới để soạn và xác nhận thông báo Zalo.
                 </p>
               </>
             )}
@@ -754,7 +754,7 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
                   : activeChannel === 'DEPARTMENT'
                   ? `gửi ca ${currentUser.department}...`
                   : `gửi ${selectedPartner?.fullName || 'đồng nghiệp'}...`
-              } (Nhấn Enter để gửi)`}
+              } (Enter để soạn thông báo Zalo)`}
               className="w-full px-3.5 py-2 rounded-2xl border border-slate-300 text-xs text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none leading-relaxed"
             />
           </div>
@@ -768,7 +768,7 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 active:scale-95'
                 : 'bg-slate-100 text-slate-300 cursor-not-allowed'
             }`}
-            title="Gửi tin nhắn (Enter)"
+            title="Soạn thông báo Zalo (Enter)"
           >
             <Send className="w-4 h-4" />
           </button>

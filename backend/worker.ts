@@ -11,6 +11,7 @@ import {
 } from "./google";
 import { audit, enqueue } from "./records";
 import { scheduledMaintenance } from "./scheduler";
+import { processZaloDelivery } from "./zalo-notifications";
 const services = {
   googleClients,
   spreadsheetId,
@@ -343,6 +344,11 @@ export function startWorker() {
   let stopped = false,
     timer: ReturnType<typeof setTimeout>;
   const tick = async () => {
+    try {
+      await processZaloDelivery();
+    } catch {
+      console.error("Zalo worker unavailable; retained delivery state.");
+    }
     try {
       await scheduledMaintenance();
       await processNextJob();

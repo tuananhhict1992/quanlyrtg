@@ -670,7 +670,7 @@ export const ALL_PERMISSIONS: { key: PermissionKey; label: string; description: 
   // Nhóm Truyền thông & Báo cáo
   {
     key: 'MANAGE_ZALO',
-    label: 'Gửi Tin nhắn & Thông báo Nội bộ',
+    label: 'Soạn & Gửi Thông báo Zalo',
     description: 'Gửi thông báo cá nhân, theo ca trực và thiết lập tin nhắn nhắc lịch.',
     category: 'Truyền thông & Báo cáo',
   },
@@ -783,7 +783,7 @@ export const ALL_MODULE_TABS: ModuleTabConfig[] = [
   },
   {
     id: 'zalo',
-    label: 'Tin nhắn nội bộ',
+    label: 'Thông báo Zalo',
     sublabel: 'Cá nhân, Ca trực, Toàn thể',
     category: 'MANAGEMENT',
     description: 'Trung tâm thông báo nội bộ trong app: cá nhân, ca trực, toàn thể & hẹn giờ phát thông báo.',
