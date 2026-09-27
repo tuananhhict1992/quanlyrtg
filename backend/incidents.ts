@@ -44,6 +44,8 @@ export async function confirmIncidents(user: any, input: any, sourceJobId?: stri
     let count = 0;
     const jobId = randomUUID();
     for (const item of input) {
+      const discarded=await db.query("select 1 from private.audit_log where module='incidents' and record_id=$1 and action in ('incidents.delete','incidents.discard') limit 1",[item.id]);
+      if(discarded.rows.length)throw new HttpError(409,'Vụ việc đã bị xóa khỏi bảng đối soát. Hãy tải lại dữ liệu.');
       const employee: any = employees.get(String(item.matchedEmployeeId));
       if (!/rtg|cau khung/.test(normalized(employee.department))) throw new HttpError(400, 'Chỉ đồng bộ nhân sự thuộc Tổ RTG.');
       const normalizedName = normalized(item.normalizedName || item.violatorName);

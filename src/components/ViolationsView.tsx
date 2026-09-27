@@ -423,6 +423,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   // Xóa trắng dữ liệu danh sách để tải báo cáo mới
   const removeDrafts = async (items: IncidentViolation[]) => {
     if(syncLock.current || isProcessing)return;
+    syncLock.current=true;setIsSyncingProfiles(true);
     setOperationError(null);
     try {
       const storedIds=new Set((propIncidents || []).filter(item=>item.isSyncedToProfile!==true).map(item=>item.id));
@@ -438,6 +439,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
         setDraftSourceJobId(undefined);
       }
     } catch(error:any) {setOperationError(error.message);}
+    finally {syncLock.current=false;setIsSyncingProfiles(false);}
   };
   const handleClearIncidents = () => {
     if(window.confirm('Xóa toàn bộ bảng đối soát đang chờ? Các vụ việc đã đồng bộ vẫn được giữ.')) void removeDrafts(draftIncidents);

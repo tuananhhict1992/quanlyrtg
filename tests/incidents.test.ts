@@ -41,6 +41,7 @@ test('incident confirmation is atomic, idempotent, visible to permitted viewers,
     await db.query("insert into private.records(module,id,data,owner_id,checksum) values('incidents','draft-remove',$1,'manager','draft')",[JSON.stringify({...draft,id:'draft-remove',code:'SC-2'})]);
     await discardIncidentDrafts(manager,['draft-remove']);await discardIncidentDrafts(manager,['draft-remove']);
     await assert.rejects(writeRecord({query},manager,'incidents','draft-remove',{...draft,id:'draft-remove'}),(e:any)=>e.status===409);
+    await assert.rejects(confirmIncidents(manager,[{...draft,id:'draft-remove',code:'SC-2'}]),(e:any)=>e.status===409);
     assert.equal((await request(app).get('/records/incidents/draft-remove')).status,404);
     assert.equal((await db.query<any>("select count(*)::int as n from private.sync_queue where record_id='draft-remove' and payload->>'deleted'='true'")).rows[0].n,1);
   }finally{(pool as any).query=savedQuery;(pool as any).connect=savedConnect;await db.close();}
