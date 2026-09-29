@@ -168,8 +168,8 @@ test('Google queue hides successes and automatically removes newly completed job
   await expect(page.getByRole('button',{name:'Xử lý hàng đợi',exact:true})).toHaveCount(0);
 });
 
-test('USER dashboard counts the system and own shift, refreshes with one Realtime channel and preserves totals on failure',async({page})=>{
-  const profile={...admin,id:'viewer',role:'USER',visibleTabs:['dashboard','violations','settings']};
+for (const role of ['ADMIN','MANAGER_L1','MANAGER_L2','USER']) test(`${role} dashboard counts the system and own department, refreshes with one Realtime channel and preserves totals on failure`,async({page})=>{
+  const profile={...admin,id:'viewer',role,visibleTabs:['dashboard','violations','settings']};
   await authenticated(page,false,profile);
   const bus=await realtimeBus(page), errors:string[]=[],googleReads:string[]=[];
   page.on('pageerror',e=>errors.push(e.message));
@@ -182,7 +182,8 @@ test('USER dashboard counts the system and own shift, refreshes with one Realtim
   await page.goto('/');
   const card=page.getByTestId('dashboard-headcount'),ca=page.getByTestId('dashboard-shift');
   await expect(card.getByText('80',{exact:true})).toBeVisible();
-  await expect(ca).toContainText('27 người');await expect(ca).toContainText('Cơ cấu nhân sự Ca');
+  await expect(ca).toContainText('27 người');await expect(ca).toContainText('Cơ cấu nhân sự theo bộ phận');
+  await expect(ca).toContainText(profile.department);
   await expect(page.getByTestId('sync-backup-warning')).toHaveCount(0);
   await expect.poll(()=>bus.count('employees')).toBe(1);
   total=81;shift=28;bus.emit('employees');
@@ -190,13 +191,13 @@ test('USER dashboard counts the system and own shift, refreshes with one Realtim
   for (const width of [390,768,1366,1920]) {
     await page.setViewportSize({width,height:1000});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
-    await page.screenshot({path:`artifacts/screenshots/user-headcount-${width}.png`,fullPage:true});
+    await page.screenshot({path:`artifacts/screenshots/headcount-${role}-${width}.png`,fullPage:true});
   }
   fail=true;const before=reads;bus.emit('employees');
   await expect.poll(()=>reads).toBeGreaterThan(before);
   await expect(page.getByText(/Chưa cập nhật được số liệu nhân sự/)).toBeVisible();
   await expect(card.getByText('81',{exact:true})).toBeVisible();
-  expect(bus.count('employees')).toBe(1);expect(googleReads).toEqual([]);expect(errors).toEqual([]);
+  expect(bus.count('employees')).toBe(1);if(role!=='ADMIN')expect(googleReads).toEqual([]);expect(errors).toEqual([]);
 });
 
 test('Admin sees a localized backup warning with global counts and file confirmation guidance',async({page})=>{

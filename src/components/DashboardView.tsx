@@ -82,14 +82,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const [showUserInfo, setShowUserInfo] = useState(false);
   const isAdmin = currentUser?.role === 'ADMIN';
-  const isUser = currentUser.role === 'USER';
   const headcountKey = `${currentUser.id}:${currentUser.department || ''}`;
   const [headcountState, setHeadcountState] = useState<{key: string; data?: HeadcountSummary; error?: string}>({key: ''});
   const headcount = headcountState.key === headcountKey ? headcountState.data : undefined;
   const headcountError = headcountState.key === headcountKey ? headcountState.error : undefined;
 
   useEffect(() => {
-    if (!isUser) return;
     const controller = new AbortController();
     // Existing employee Realtime updates trigger this refresh; no extra channel or polling.
     const timer = window.setTimeout(async () => {
@@ -104,7 +102,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       }
     }, 150);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [isUser, headcountKey, employees]);
+  }, [headcountKey, employees]);
 
   // State for announcement update modal
   const [isEditAnnouncementOpen, setIsEditAnnouncementOpen] = useState(false);
@@ -161,11 +159,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Analytical metrics
   const totalEmployees = employees.length;
-  const activeEmployees = employees.filter((e) => e.status === 'ACTIVE').length;
-  const probationEmployees = employees.filter((e) => e.status === 'PROBATION').length;
-  const headcountTotal = isUser ? headcount?.totalEmployees : totalEmployees;
-  const headcountActive = isUser ? headcount?.activeEmployees : activeEmployees;
-  const headcountProbation = isUser ? headcount?.probationEmployees : probationEmployees;
+  const headcountTotal = headcount?.totalEmployees;
+  const headcountActive = headcount?.activeEmployees;
+  const headcountProbation = headcount?.probationEmployees;
   const syncedZaloCount = employees.filter((e) => e.zaloSynced).length;
   const zaloSyncRate = Math.round((syncedZaloCount / (totalEmployees || 1)) * 100);
 
@@ -178,14 +174,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   );
 
   // Department distribution
-  const deptCounts: Record<string, number> = {};
-  if (isUser) {
-    if (headcount?.shift.name) deptCounts[headcount.shift.name] = headcount.shift.totalEmployees;
-  } else {
-    employees.forEach((e) => {
-      deptCounts[e.department] = (deptCounts[e.department] || 0) + 1;
-    });
-  }
+  const deptCounts: Record<string, number> = headcount?.shift.name
+    ? {[headcount.shift.name]: headcount.shift.totalEmployees}
+    : {};
 
   // Feedback stats
   const pendingFeedbacks = feedbacks.filter((f) => f.status === 'PENDING').length;
@@ -247,7 +238,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span>•</span>
             <span>{headcountProbation ?? '—'} thử việc</span>
           </div>
-          {isUser && <p className="mt-2 text-xs text-slate-500">{headcount ? 'Nhân sự toàn hệ thống' : headcountError ? 'Chưa có số liệu' : 'Đang tải số liệu…'}</p>}
+          <p className="mt-2 text-xs text-slate-500">{headcount ? 'Nhân sự toàn hệ thống' : headcountError ? 'Chưa có số liệu' : 'Đang tải số liệu…'}</p>
         </button>
 
         {/* Competency Score */}
@@ -310,7 +301,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <button id="dash-admin-master-sync-btn" type="button" onClick={onOpenMasterSync} className="hict-button"><FileSpreadsheet size={15} />Đẩy dữ liệu ngay<ArrowRight size={14} /></button>
       </section>}
 
-      {isUser && headcountError && <p role="status" className="text-sm text-amber-700">{headcountError}{headcount ? ' Đang hiển thị số liệu gần nhất.' : ''}</p>}
+      {headcountError && <p role="status" className="text-sm text-amber-700">{headcountError}{headcount ? ' Đang hiển thị số liệu gần nhất.' : ''}</p>}
       {/* Analytical Detail Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Department Breakdown */}
@@ -319,14 +310,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                 <Users className="w-4 h-4 text-indigo-600" />
-                {isUser ? 'Cơ cấu nhân sự Ca' : 'Cơ cấu Nhân sự theo Phòng Ban'}
+                Cơ cấu nhân sự theo bộ phận
               </h3>
-              <span className="text-xs text-slate-400">{isUser ? 'Ca của bạn' : `${Object.keys(deptCounts).length} bộ phận`}</span>
+              <span className="text-xs text-slate-400">Bộ phận của bạn</span>
             </div>
 
             <div className="space-y-3">
-              {isUser && !headcount && <p className="text-sm text-slate-500">{headcountError ? 'Chưa có số liệu ca.' : 'Đang tải số liệu ca…'}</p>}
-              {isUser && headcount && !headcount.shift.name && <p className="text-sm text-slate-500">Hồ sơ của bạn chưa được phân ca.</p>}
+              {!headcount && <p className="text-sm text-slate-500">{headcountError ? 'Chưa có số liệu bộ phận.' : 'Đang tải số liệu bộ phận…'}</p>}
+              {headcount && !headcount.shift.name && <p className="text-sm text-slate-500">Hồ sơ của bạn chưa được phân bộ phận.</p>}
               {Object.entries(deptCounts).map(([dept, count]) => {
                 const pct = headcountTotal ? Math.round((count / headcountTotal) * 100) : 0;
                 return (
@@ -346,7 +337,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                 );
               })}
-              {isUser && headcount?.shift.name && <p className="text-xs text-slate-400">Tỷ lệ so với tổng nhân sự toàn hệ thống.</p>}
+              {headcount?.shift.name && <p className="text-xs text-slate-400">Tỷ lệ so với tổng nhân sự toàn hệ thống.</p>}
             </div>
           </div>
 

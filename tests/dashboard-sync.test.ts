@@ -23,6 +23,13 @@ test('dashboard exposes accurate aggregate counts for own shift without exposing
     assert.deepEqual(counts.body,{totalEmployees:4,activeEmployees:2,probationEmployees:1,shift:{name:'RTG ca 1',totalEmployees:2}});
     assert.equal(JSON.stringify(counts.body).includes('private@example.test'),false);
     const own=await request(app).get('/records/employees');assert.deepEqual(own.body.items.map((e:any)=>e.id),['u1']);
+    for (const role of ['ADMIN','MANAGER_L1','MANAGER_L2','USER']) {
+      user={...user,role,department:'RTG ca 2'};
+      const aggregate=await request(app).get('/operations/dashboard/headcount?department=RTG%20ca%201');
+      assert.equal(aggregate.status,200);
+      assert.deepEqual(aggregate.body,{totalEmployees:4,activeEmployees:2,probationEmployees:1,shift:{name:'RTG ca 2',totalEmployees:2}});
+    }
+    user={...user,department:'RTG ca 1'};
     await db.query("delete from private.records where module='employees' and id='u2'");
     assert.equal((await request(app).get('/operations/dashboard/headcount')).body.shift.totalEmployees,1);
     user={...user,department:''};assert.deepEqual((await request(app).get('/operations/dashboard/headcount')).body.shift,{name:null,totalEmployees:0});
