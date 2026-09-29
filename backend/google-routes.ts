@@ -16,7 +16,7 @@ import {
 } from "./google-connection";
 import { startGoogleOAuth } from "./google-oauth";
 import { processNextJob } from "./worker";
-import { listUnfinishedSyncJobs } from './automatic-worker';
+import { listUnfinishedSyncJobs, summarizeUnfinishedSyncJobs } from './automatic-worker';
 import {
   assertPermission,
   checksum,
@@ -118,10 +118,24 @@ googleRouter.get(
   }),
 );
 googleRouter.get(
+  '/jobs/summary',
+  asyncRoute(async (req, res) => {
+    if (req.user.role !== 'ADMIN') throw new HttpError(403, 'Chỉ quản trị viên được xem cảnh báo sao lưu.');
+    assertPermission(req.user, 'MANAGE_PERMISSIONS');
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await summarizeUnfinishedSyncJobs());
+  }),
+);
+googleRouter.get(
   "/jobs",
   asyncRoute(async (req, res) => {
     assertPermission(req.user, "MANAGE_PERMISSIONS");
-    res.json(await listUnfinishedSyncJobs(req.query.page));
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.query.includeSummary === 'true') {
+      if (req.user.role !== 'ADMIN') throw new HttpError(403, 'Chỉ quản trị viên được xem cảnh báo sao lưu.');
+      const [items, summary] = await Promise.all([listUnfinishedSyncJobs(req.query.page), summarizeUnfinishedSyncJobs()]);
+      res.json({items, summary});
+    } else res.json(await listUnfinishedSyncJobs(req.query.page));
   }),
 );
 googleRouter.post(

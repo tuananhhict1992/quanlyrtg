@@ -11,7 +11,23 @@ import { generateBxxlHtml } from "../src/services/bxxlTemplate";
 import { finalizeRanking } from './rankings';
 import { confirmIncidents, discardIncidentDrafts } from './incidents';
 import { importQuestionBank } from './question-bank';
+import { isTabAllowed } from '../src/utils/permissionUtils';
 export const operationsRouter = Router();
+operationsRouter.get('/dashboard/headcount', asyncRoute(async (req, res) => {
+  if (!isTabAllowed('dashboard', req.user)) throw new HttpError(403, 'Bạn chưa được cấp quyền xem Tổng quan.');
+  // Return aggregates only; personnel records retain their existing access scope.
+  const shift = typeof req.user.department === 'string' ? req.user.department.trim() || null : null;
+  const { rows: [counts] } = await pool.query(`
+    select count(*)::int as "totalEmployees",
+      count(*) filter (where data->>'status' = 'ACTIVE')::int as "activeEmployees",
+      count(*) filter (where data->>'status' = 'PROBATION')::int as "probationEmployees",
+      count(*) filter (where lower(btrim(data->>'department')) = lower($1))::int as "shiftEmployees"
+    from private.records where module = 'employees'
+  `, [shift]);
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ totalEmployees: counts.totalEmployees, activeEmployees: counts.activeEmployees,
+    probationEmployees: counts.probationEmployees, shift: { name: shift, totalEmployees: counts.shiftEmployees } });
+}));
 operationsRouter.post('/question-bank/import',asyncRoute(async(req,res)=>{
   res.json(await importQuestionBank(req.user,req.body));
 }));

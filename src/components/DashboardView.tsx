@@ -38,6 +38,15 @@ import {
   AppSettings,
 } from '../types';
 import { TabType } from './Sidebar';
+import { api } from '../services/supabase';
+import { AdminGoogleSyncNotice } from './GoogleSyncNotice';
+
+interface HeadcountSummary {
+  totalEmployees: number;
+  activeEmployees: number;
+  probationEmployees: number;
+  shift: { name: string | null; totalEmployees: number };
+}
 
 interface DashboardViewProps {
   currentUser: Employee;
@@ -73,6 +82,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const [showUserInfo, setShowUserInfo] = useState(false);
   const isAdmin = currentUser?.role === 'ADMIN';
+  const isUser = currentUser.role === 'USER';
+  const headcountKey = `${currentUser.id}:${currentUser.department || ''}`;
+  const [headcountState, setHeadcountState] = useState<{key: string; data?: HeadcountSummary; error?: string}>({key: ''});
+  const headcount = headcountState.key === headcountKey ? headcountState.data : undefined;
+  const headcountError = headcountState.key === headcountKey ? headcountState.error : undefined;
+
+  useEffect(() => {
+    if (!isUser) return;
+    const controller = new AbortController();
+    // Existing employee Realtime updates trigger this refresh; no extra channel or polling.
+    const timer = window.setTimeout(async () => {
+      try {
+        const data = await api<HeadcountSummary>('/operations/dashboard/headcount', {signal: controller.signal});
+        if (!controller.signal.aborted) setHeadcountState({key: headcountKey, data});
+      } catch {
+        if (!controller.signal.aborted) setHeadcountState(previous => ({
+          key: headcountKey, data: previous.key === headcountKey ? previous.data : undefined,
+          error: 'Chưa cập nhật được số liệu nhân sự. Hệ thống sẽ tự thử lại.',
+        }));
+      }
+    }, 150);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [isUser, headcountKey, employees]);
 
   // State for announcement update modal
   const [isEditAnnouncementOpen, setIsEditAnnouncementOpen] = useState(false);
@@ -131,6 +163,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const totalEmployees = employees.length;
   const activeEmployees = employees.filter((e) => e.status === 'ACTIVE').length;
   const probationEmployees = employees.filter((e) => e.status === 'PROBATION').length;
+  const headcountTotal = isUser ? headcount?.totalEmployees : totalEmployees;
+  const headcountActive = isUser ? headcount?.activeEmployees : activeEmployees;
+  const headcountProbation = isUser ? headcount?.probationEmployees : probationEmployees;
   const syncedZaloCount = employees.filter((e) => e.zaloSynced).length;
   const zaloSyncRate = Math.round((syncedZaloCount / (totalEmployees || 1)) * 100);
 
@@ -144,9 +179,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Department distribution
   const deptCounts: Record<string, number> = {};
-  employees.forEach((e) => {
-    deptCounts[e.department] = (deptCounts[e.department] || 0) + 1;
-  });
+  if (isUser) {
+    if (headcount?.shift.name) deptCounts[headcount.shift.name] = headcount.shift.totalEmployees;
+  } else {
+    employees.forEach((e) => {
+      deptCounts[e.department] = (deptCounts[e.department] || 0) + 1;
+    });
+  }
 
   // Feedback stats
   const pendingFeedbacks = feedbacks.filter((f) => f.status === 'PENDING').length;
@@ -158,6 +197,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="space-y-6 hict-dashboard">
+      {isAdmin && <AdminGoogleSyncNotice onOpen={() => setActiveTab('permissions')} />}
       <div className="hict-dashboard-columns">
         <section className="hict-panel p-5 sm:p-6">
           <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
@@ -190,7 +230,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* KPI Highlight Grid */}
       <div className="hict-metrics">
         {/* Total Employees */}
-        <button type="button" onClick={() => setActiveTab('hr')} className="hict-metric group"
+        <button type="button" data-testid="dashboard-headcount" onClick={() => setActiveTab('hr')} className="hict-metric group"
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-slate-500">Tổng số Nhân sự</span>
@@ -199,14 +239,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-extrabold text-slate-900">{totalEmployees}</span>
-            <span className="text-xs font-semibold text-emerald-600">{totalEmployees ? Math.round(activeEmployees / totalEmployees * 100) : 0}% hoạt động</span>
+            <span className="text-2xl sm:text-3xl font-extrabold text-slate-900">{headcountTotal ?? '—'}</span>
+            {headcountTotal !== undefined && <span className="text-xs font-semibold text-emerald-600">{headcountTotal ? Math.round((headcountActive || 0) / headcountTotal * 100) : 0}% hoạt động</span>}
           </div>
           <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-            <span>{activeEmployees} chính thức</span>
+            <span>{headcountActive ?? '—'} chính thức</span>
             <span>•</span>
-            <span>{probationEmployees} thử việc</span>
+            <span>{headcountProbation ?? '—'} thử việc</span>
           </div>
+          {isUser && <p className="mt-2 text-xs text-slate-500">{headcount ? 'Nhân sự toàn hệ thống' : headcountError ? 'Chưa có số liệu' : 'Đang tải số liệu…'}</p>}
         </button>
 
         {/* Competency Score */}
@@ -269,22 +310,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <button id="dash-admin-master-sync-btn" type="button" onClick={onOpenMasterSync} className="hict-button"><FileSpreadsheet size={15} />Đẩy dữ liệu ngay<ArrowRight size={14} /></button>
       </section>}
 
+      {isUser && headcountError && <p role="status" className="text-sm text-amber-700">{headcountError}{headcount ? ' Đang hiển thị số liệu gần nhất.' : ''}</p>}
       {/* Analytical Detail Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Department Breakdown */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        <div data-testid="dashboard-shift" className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                 <Users className="w-4 h-4 text-indigo-600" />
-                Cơ cấu Nhân sự theo Phòng Ban
+                {isUser ? 'Cơ cấu nhân sự Ca' : 'Cơ cấu Nhân sự theo Phòng Ban'}
               </h3>
-              <span className="text-xs text-slate-400">{Object.keys(deptCounts).length} bộ phận</span>
+              <span className="text-xs text-slate-400">{isUser ? 'Ca của bạn' : `${Object.keys(deptCounts).length} bộ phận`}</span>
             </div>
 
             <div className="space-y-3">
+              {isUser && !headcount && <p className="text-sm text-slate-500">{headcountError ? 'Chưa có số liệu ca.' : 'Đang tải số liệu ca…'}</p>}
+              {isUser && headcount && !headcount.shift.name && <p className="text-sm text-slate-500">Hồ sơ của bạn chưa được phân ca.</p>}
               {Object.entries(deptCounts).map(([dept, count]) => {
-                const pct = Math.round((count / totalEmployees) * 100);
+                const pct = headcountTotal ? Math.round((count / headcountTotal) * 100) : 0;
                 return (
                   <div key={dept} className="space-y-1">
                     <div className="flex justify-between text-xs">
@@ -302,6 +346,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                 );
               })}
+              {isUser && headcount?.shift.name && <p className="text-xs text-slate-400">Tỷ lệ so với tổng nhân sự toàn hệ thống.</p>}
             </div>
           </div>
 

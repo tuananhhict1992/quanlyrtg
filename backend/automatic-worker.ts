@@ -65,6 +65,30 @@ export async function runAutomaticWorker(authorization: string | undefined) {
 
 export async function listUnfinishedSyncJobs(pageInput: unknown) {
   const page = Math.min(100000, Math.max(0, Math.floor(Number(pageInput) || 0)));
-  return (await pool.query(`select job_id,kind,module,record_id,status,attempts,last_error,created_at,next_attempt_at
-    from private.sync_queue where status<>'success' order by sequence desc limit 50 offset $1`, [page*50])).rows;
+  return (await pool.query(`select q.job_id,q.kind,q.module,q.record_id,q.status,q.attempts,q.last_error,q.created_at,q.next_attempt_at,
+    q.payload->>'fileName' as file_name, ${syncStageSql} as stage
+    from private.sync_queue q left join private.temporary_files t on t.job_id=q.job_id
+    where q.status<>'success' order by q.sequence desc limit 50 offset $1`, [page*50])).rows;
+}
+
+const syncStageSql = `case
+  when q.status<>'pending' then q.status
+  when q.kind='drive' and t.job_id is null then 'missing_file'
+  when q.kind='drive' and t.processed_at is null then 'waiting_processing'
+  when q.kind='drive' and t.business_saved_at is null then 'waiting_confirmation'
+  else 'pending' end`;
+
+export async function summarizeUnfinishedSyncJobs() {
+  return (await pool.query(`with unfinished as (
+    select q.kind,${syncStageSql} as stage from private.sync_queue q
+    left join private.temporary_files t on t.job_id=q.job_id where q.status<>'success'
+  ) select count(*)::int as total,
+    count(*) filter (where kind='drive')::int as drive,
+    count(*) filter (where kind='sheet')::int as sheet,
+    count(*) filter (where stage='waiting_confirmation')::int as "waitingConfirmation",
+    count(*) filter (where stage='pending')::int as pending,
+    count(*) filter (where stage='processing')::int as processing,
+    count(*) filter (where stage='failed')::int as failed,
+    count(*) filter (where stage in ('missing_file','waiting_processing'))::int as "needsAttention"
+    from unfinished`)).rows[0];
 }

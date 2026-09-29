@@ -3,6 +3,8 @@ import { api } from "../services/supabase";
 import { connectGoogleDriveStorage } from "../services/googleDriveAuth";
 import { formatDate } from "../utils/date";
 import type { Employee } from "../types";
+import { SYNC_MODULE_NAMES, SYNC_STAGE_NAMES, type SyncSummary } from '../utils/googleSync';
+import { SyncQueueNotice } from './GoogleSyncNotice';
 export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
   const [jobs, setJobs] = useState<any[]>([]),
     [page, setPage] = useState(0),
@@ -15,6 +17,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
     [preview, setPreview] = useState<any>(null),
     [module, setModule] = useState("employees"),
     [busy, setBusy] = useState(false);
+  const [summary, setSummary] = useState<SyncSummary | null>(null);
   const allowed = currentUser.role === 'ADMIN';
   const load = () => setRefresh(value => value + 1);
   useEffect(() => {
@@ -26,11 +29,12 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
       if (fetching || !active || document.visibilityState === 'hidden') return;
       fetching = true;
       try {
-        const [items, connected, automatic] = await Promise.all([
-          api<any[]>('/google/jobs?page=' + page,{signal:cancelled.signal}), api('/google/connection',{signal:cancelled.signal}), api('/google/automation',{signal:cancelled.signal}),
+        const [queue, connected, automatic] = await Promise.all([
+          api<{items:any[];summary:SyncSummary}>('/google/jobs?page=' + page + '&includeSummary=true',{signal:cancelled.signal}), api('/google/connection',{signal:cancelled.signal}), api('/google/automation',{signal:cancelled.signal}),
         ]);
         if (!active) return;
-        const unfinished = items.filter(item => item.status !== 'success');
+        const unfinished = queue.items.filter(item => item.status !== 'success');
+        setSummary(queue.summary);
         setJobs(unfinished); setConnection(connected); setAutomation(automatic); setError('');
         if (!unfinished.length && page > 0) setPage(value => value - 1);
       } catch (e) {
@@ -62,17 +66,18 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
   return (
     <section
       className="rounded-2xl border border-indigo-200 bg-white p-4 sm:p-6 space-y-4 min-w-0"
-      aria-label="Google Sync"
+      aria-label="Đồng bộ Google"
     >
-      <h3 className="font-bold text-lg">Google Sync · Lưu trữ & báo cáo</h3>
+      <h3 className="font-bold text-lg">Đồng bộ Google · Lưu trữ & báo cáo</h3>
+      {summary && <SyncQueueNotice summary={summary} />}
       <p className="rounded-lg bg-blue-50 text-blue-800 p-3 text-sm" role="status">
         {automation?.enabled
           ? 'Đồng bộ tự động mỗi phút, kể cả khi đóng app. Chỉ hiển thị tác vụ đang chờ, đang chạy hoặc cần xử lý lỗi.'
           : 'Lịch đồng bộ tự động chưa được bật trên máy chủ.'}
       </p>
       <p className="text-sm text-slate-600">
-        Dữ liệu nghiệp vụ được lưu tại PostgreSQL. Google lỗi không làm mất bản
-        ghi đã lưu.
+        Supabase lưu dữ liệu nghiệp vụ chính. Drive lưu file; Sheets lưu báo cáo và lịch sử.
+        File tạm chỉ được xóa sau khi dữ liệu đã lưu và Drive xác nhận nhận file thành công.
       </p>
       <div className="rounded-lg bg-slate-50 p-3 space-y-2 text-sm">
         <p>
@@ -178,7 +183,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
               }, "Đã xếp hàng sao lưu. Máy chủ sẽ tự động xử lý.");
           }}
         >
-          Backup
+          Sao lưu dữ liệu
         </button>
         <button
           disabled={loading}
@@ -200,14 +205,14 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
           className="border rounded-lg p-2"
         >
           {[
-            ["employees", "EMPLOYEES"],
-            ["incidents", "VIOLATIONS"],
-            ["bxxlRecords", "RANKINGS"],
-            ["leaveRequests", "LEAVE"],
-            ["shipProductivity", "SHIP_PRODUCTIVITY"],
-            ["feedbacks", "FEEDBACK"],
-            ["zaloMessages", "NOTIFICATIONS"],
-            ["competencyEvents", "COMPETENCY_EVENTS"],
+            ["employees", "Nhân sự"],
+            ["incidents", "Vi phạm & sự cố"],
+            ["bxxlRecords", "Bình xét xếp loại"],
+            ["leaveRequests", "Nghỉ phép"],
+            ["shipProductivity", "Sản lượng"],
+            ["feedbacks", "Góp ý & đề xuất"],
+            ["zaloMessages", "Thông báo nội bộ"],
+            ["competencyEvents", "Lịch sử năng lực"],
           ].map(([v, l]) => (
             <option key={v} value={v}>
               {l}
@@ -230,7 +235,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
             )
           }
         >
-          Preview
+          Xem trước dữ liệu
         </button>
       </div>
       {preview && (
@@ -258,7 +263,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
                 }, "Đã nhập dữ liệu vào PostgreSQL.");
             }}
           >
-            Confirm Import
+            Xác nhận nhập dữ liệu
           </button>
         </div>
       )}
@@ -272,7 +277,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
             <article key={j.job_id} className="border rounded-lg p-3 min-w-0">
               <div className="flex justify-between gap-2">
                 <strong className="break-all">
-                  {j.module} · {j.kind}
+                  {SYNC_MODULE_NAMES[j.module] || 'Dữ liệu hệ thống'} · {j.kind === 'drive' ? 'Lưu file Drive' : 'Báo cáo Sheets'}
                 </strong>
                 <span
                   className={
@@ -281,13 +286,16 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
                       : "text-amber-700"
                   }
                 >
-                  {j.status}
+                  {SYNC_STAGE_NAMES[j.stage || j.status] || 'Cần kiểm tra'}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 break-all">
-                {j.record_id} · {formatDate(j.created_at, true)} · Lần thử{" "}
-                {j.attempts}
-              </p>
+              <p className="text-sm text-slate-800 break-words mt-2">{j.file_name || (j.kind === 'drive' ? 'File lưu trữ' : 'Cập nhật báo cáo')}</p>
+              <p className="text-xs text-slate-500 mt-1">Tạo lúc {formatDate(j.created_at, true)} · Đã thử {j.attempts || 0} lần</p>
+              {j.stage === 'waiting_confirmation' && <p className="text-sm text-amber-800 mt-2">Chưa có xác nhận lưu dữ liệu của lần nhập này. Mở phân hệ {SYNC_MODULE_NAMES[j.module] || 'tương ứng'}, rà soát và xác nhận dữ liệu trước khi sao lưu. File vẫn được giữ tạm.</p>}
+              {j.stage === 'waiting_processing' && <p className="text-sm text-amber-800 mt-2">File chưa xử lý xong. Hãy kiểm tra lần nhập tại phân hệ tương ứng.</p>}
+              {j.stage === 'missing_file' && <p className="text-sm text-red-700 mt-2">Không tìm thấy file tạm của tác vụ. Cần quản trị viên kiểm tra trước khi thử lại.</p>}
+              {(j.stage || j.status) === 'pending' && <p className="text-sm text-slate-600 mt-2">Đã sẵn sàng, máy chủ sẽ tự động xử lý theo lịch.</p>}
+              <details className="text-xs text-slate-500 mt-2"><summary className="cursor-pointer">Chi tiết tra cứu</summary><p className="break-all mt-1">Mã tác vụ: {j.job_id}<br />Mã bản ghi: {j.record_id}</p></details>
               {j.last_error && (
                 <p className="text-sm text-red-600 mt-2">{j.last_error}</p>
               )}
@@ -306,7 +314,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
                     }, "Đã xếp hàng thử lại. Máy chủ sẽ tự động xử lý.")
                   }
                 >
-                  Retry Sync
+                  Thử đồng bộ lại
                 </button>
               )}
             </article>

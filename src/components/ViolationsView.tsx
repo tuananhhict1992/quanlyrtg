@@ -496,6 +496,21 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
     <div className="space-y-6 pb-12">
       {operationError && <div role="alert" className="p-4 rounded-xl bg-rose-50 text-rose-800">{operationError}</div>}
       {/* 1. Header Banner & Quy chuẩn */}
+      {currentUser.role === 'USER' ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-extrabold text-slate-900">Vi phạm & Sự cố</h1>
+          {canManageViolations && (
+            <button
+              id="btn-violations-action-hub"
+              type="button"
+              onClick={() => setIsActionHubOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold flex items-center gap-2"
+            >
+              <Layers className="w-4 h-4" /> Tiện ích & Tác vụ
+            </button>
+          )}
+        </div>
+      ) : (
       <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-700/50 relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
@@ -599,6 +614,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* Data_RTG Sync Feedback Banner */}
       {dataRtgSyncMessage && (
