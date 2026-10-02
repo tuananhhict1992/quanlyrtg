@@ -606,14 +606,14 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
 
           {/* Grid các trường link */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* 1. Tra Cứu */}
+            {/* 1. Tra Cứu NQ-QĐ */}
             <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2 hover:border-blue-300 transition-colors">
               <div className="flex items-center justify-between">
                 <label className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
                     <Search className="w-4 h-4" />
                   </div>
-                  <span>1. Nút "Tra Cứu"</span>
+                  <span>1. Nút "Tra Cứu NQ-QĐ"</span>
                 </label>
                 {traCuuLink.trim() && (
                   <button
@@ -627,7 +627,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
                 )}
               </div>
               <p className="text-[11px] text-slate-500">
-                Đường link tra cứu dữ liệu hàng hóa, bãi cảng hoặc cổng thông tin tra cứu.
+                Đường link tra cứu dữ liệu hàng hóa, nghị quyết, quyết định hoặc cổng thông tin tra cứu cảng.
               </p>
               <input
                 type="url"
@@ -638,14 +638,14 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
               />
             </div>
 
-            {/* 2. Thư Viện (NQ - QĐ) */}
+            {/* 2. Tra Cứu Kỹ thuật */}
             <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2 hover:border-teal-300 transition-colors">
               <div className="flex items-center justify-between">
                 <label className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
                     <BookOpen className="w-4 h-4" />
                   </div>
-                  <span>2. Nút "Thư Viện" (NQ - QĐ)</span>
+                  <span>2. Nút "Tra Cứu Kỹ thuật"</span>
                 </label>
                 {libraryLink.trim() && (
                   <button
@@ -659,7 +659,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
                 )}
               </div>
               <p className="text-[11px] text-slate-500">
-                Đường link thư mục Google Drive chứa văn bản Nghị quyết, Quyết định và Quy trình vận hành.
+                Đường link thư mục Google Drive chứa văn bản kỹ thuật, sổ tay, quy trình bảo dưỡng và vận hành RTG.
               </p>
               <input
                 type="url"
@@ -734,14 +734,14 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
               />
             </div>
 
-            {/* 5. Vi phạm */}
+            {/* 5. Thư viện */}
             <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2 hover:border-rose-300 transition-colors">
               <div className="flex items-center justify-between">
                 <label className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-                    <AlertTriangle className="w-4 h-4" />
+                    <BookOpen className="w-4 h-4" />
                   </div>
-                  <span>5. Nút "Vi phạm"</span>
+                  <span>5. Nút "Thư viện"</span>
                 </label>
                 {violationReportLink.trim() && (
                   <button
@@ -755,7 +755,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
                 )}
               </div>
               <p className="text-[11px] text-slate-500">
-                Đường link theo dõi tổng hợp các biên bản sự cố, vi phạm nội quy lao động & an toàn của Tổ RTG.
+                Đường link theo dõi tổng hợp các tài liệu, quy chế, biên bản và thư viện biểu mẫu của Tổ RTG.
               </p>
               <input
                 type="url"

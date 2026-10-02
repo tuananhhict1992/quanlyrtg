@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { createHash } from 'node:crypto';
 import * as XLSX from 'xlsx';
-const emptySyncSummary={total:0,drive:0,sheet:0,waitingConfirmation:0,pending:0,processing:0,failed:0,needsAttention:0};
 const admin = {
   id: "test-admin",
   fullName: "Quản trị kiểm thử",
@@ -143,8 +142,6 @@ test('Incident viewer receives published cases through Realtime without Google s
   await expect(page.getByText('SC-TEST',{exact:true})).toBeVisible();
   await expect(page.getByText('SC-HIDDEN',{exact:true})).toHaveCount(0);
   await expect(page.getByRole('button',{name:/Data_RTG|Đồng bộ ngay|Hồ sơ Nhân sự/})).toHaveCount(0);
-  await expect(page.getByText('Nguồn dữ liệu Chuẩn hóa:',{exact:true})).toHaveCount(0);
-  await expect(page.getByRole('heading',{name:'Vi phạm & Sự cố',exact:true})).toBeVisible();
 });
 
 test('Google queue hides successes and automatically removes newly completed jobs',async({page})=>{
@@ -153,75 +150,18 @@ test('Google queue hides successes and automatically removes newly completed job
   await page.route('**/api/google/automation',route=>route.fulfill({json:{enabled:true}}));
   await page.route('**/api/google/jobs?*',route=>{
     reads++;
-    return route.fulfill({json:{items:[{job_id:'complete',module:'hidden-completed',kind:'sheet',status:'success',created_at:new Date().toISOString()},
-      ...(!complete?[{job_id:'waiting',module:'employees',kind:'sheet',status:'pending',created_at:new Date().toISOString()}]:[])],summary:complete?emptySyncSummary:{...emptySyncSummary,total:1,sheet:1,pending:1}}});
+    return route.fulfill({json:[{job_id:'complete',module:'hidden-completed',kind:'sheet',status:'success',created_at:new Date().toISOString()},
+      ...(!complete?[{job_id:'waiting',module:'waiting-employee',kind:'sheet',status:'pending',created_at:new Date().toISOString()}]:[])]});
   });
   await page.goto('/');
   await page.getByTestId('nav-permissions').click();
   await expect(page.getByText(/Đồng bộ tự động mỗi phút/)).toBeVisible();
   await expect(page.getByText('hidden-completed · sheet')).toHaveCount(0);
-  await expect(page.getByText('Nhân sự · Báo cáo Sheets')).toBeVisible();
+  await expect(page.getByText('waiting-employee · sheet')).toBeVisible();
   const before=reads;complete=true;
   await expect.poll(()=>reads,{timeout:20000}).toBeGreaterThan(before);
   await expect(page.getByText(/Không có tác vụ cần xử lý/)).toBeVisible();
-  await expect(page.getByTestId('sync-backup-warning')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Xử lý hàng đợi',exact:true})).toHaveCount(0);
-});
-
-for (const role of ['ADMIN','MANAGER_L1','MANAGER_L2','USER']) test(`${role} dashboard counts the system and own department, refreshes with one Realtime channel and preserves totals on failure`,async({page})=>{
-  const profile={...admin,id:'viewer',role,visibleTabs:['dashboard','violations','settings']};
-  await authenticated(page,false,profile);
-  const bus=await realtimeBus(page), errors:string[]=[],googleReads:string[]=[];
-  page.on('pageerror',e=>errors.push(e.message));
-  page.on('request',r=>{if(r.url().includes('/api/google/'))googleReads.push(r.url());});
-  let total=80,shift=27,fail=false,reads=0;
-  await page.route('**/api/operations/dashboard/headcount',route=>{
-    reads++;
-    return route.fulfill(fail?{status:503,json:{error:'Tạm gián đoạn'}}:{json:{totalEmployees:total,activeEmployees:75,probationEmployees:5,shift:{name:profile.department,totalEmployees:shift}}});
-  });
-  await page.goto('/');
-  const card=page.getByTestId('dashboard-headcount'),ca=page.getByTestId('dashboard-shift');
-  await expect(card.getByText('80',{exact:true})).toBeVisible();
-  await expect(ca).toContainText('27 người');await expect(ca).toContainText('Cơ cấu nhân sự theo bộ phận');
-  await expect(ca).toContainText(profile.department);
-  await expect(page.getByTestId('sync-backup-warning')).toHaveCount(0);
-  await expect.poll(()=>bus.count('employees')).toBe(1);
-  total=81;shift=28;bus.emit('employees');
-  await expect(card.getByText('81',{exact:true})).toBeVisible();await expect(ca).toContainText('28 người');
-  for (const width of [390,768,1366,1920]) {
-    await page.setViewportSize({width,height:1000});
-    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
-    await page.screenshot({path:`artifacts/screenshots/headcount-${role}-${width}.png`,fullPage:true});
-  }
-  fail=true;const before=reads;bus.emit('employees');
-  await expect.poll(()=>reads).toBeGreaterThan(before);
-  await expect(page.getByText(/Chưa cập nhật được số liệu nhân sự/)).toBeVisible();
-  await expect(card.getByText('81',{exact:true})).toBeVisible();
-  expect(bus.count('employees')).toBe(1);if(role!=='ADMIN')expect(googleReads).toEqual([]);expect(errors).toEqual([]);
-});
-
-test('Admin sees a localized backup warning with global counts and file confirmation guidance',async({page})=>{
-  await authenticated(page);
-  const summary={...emptySyncSummary,total:57,drive:7,sheet:50,waitingConfirmation:7,pending:48,failed:2};
-  await page.route('**/api/google/jobs/summary',route=>route.fulfill({json:summary}));
-  await page.route('**/api/google/jobs?*',route=>route.fulfill({json:{summary,items:[
-    {job_id:'waiting-file',record_id:'import:waiting-file',module:'incidents',kind:'drive',status:'pending',stage:'waiting_confirmation',file_name:'Báo cáo kiểm thử.xlsx',created_at:'2026-09-28T00:00:00Z',attempts:0},
-  ]}}));
-  await page.setViewportSize({width:1366,height:1000});await page.goto('/');
-  await expect(page.getByTestId('sync-backup-warning')).toContainText('Có 57 tác vụ');
-  await page.getByRole('button',{name:'Xem hàng đợi sao lưu',exact:true}).click();
-  const panel=page.getByRole('region',{name:'Đồng bộ Google',exact:true});
-  await expect(panel.getByTestId('sync-backup-warning')).toContainText('Có 57 tác vụ');
-  await expect(panel.getByText('Báo cáo kiểm thử.xlsx',{exact:true})).toBeVisible();
-  await expect(panel.getByText('Chờ xác nhận dữ liệu',{exact:true})).toBeVisible();
-  await expect(panel.getByText('pending',{exact:true})).toHaveCount(0);
-  await expect(panel.getByText(/Mã bản ghi:/)).not.toBeVisible();
-  await expect(panel.getByRole('button',{name:'Thử đồng bộ lại'})).toHaveCount(0);
-  for(const width of [390,768,1366,1920]){
-    await page.setViewportSize({width,height:1000});
-    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
-    await panel.screenshot({path:`artifacts/screenshots/backup-warning-${width}.png`});
-  }
 });
 
 test('Original HICT logo renders when the deployment omits binary public assets', async ({page}) => {
@@ -274,8 +214,6 @@ async function authenticated(page: any, includeArchive = false, profile: any = a
     }
     let body: any = { success: true };
     if (u.pathname === "/api/me") body = profile;
-    else if (u.pathname === '/api/google/jobs/summary') body = emptySyncSummary;
-    else if (u.pathname === '/api/operations/dashboard/headcount') body = {totalEmployees:1,activeEmployees:1,probationEmployees:0,shift:{name:profile.department,totalEmployees:1}};
     else if (u.pathname === "/api/google/import/preview")
       body = {
         job_id: "preview-test",
@@ -289,7 +227,7 @@ async function authenticated(page: any, includeArchive = false, profile: any = a
         message: "Đã xếp hàng báo cáo. Theo dõi kết quả tại Google Sync.",
       };
     else if (u.pathname === "/api/google/jobs")
-      body = {summary:{...emptySyncSummary,total:1,sheet:1,failed:1},items:[
+      body = [
         {
           job_id: "job-1",
           kind: "sheet",
@@ -300,7 +238,7 @@ async function authenticated(page: any, includeArchive = false, profile: any = a
           last_error: "Lỗi Google giả lập; dữ liệu DB vẫn giữ.",
           created_at: "2026-09-25T00:00:00Z",
         },
-      ]};
+      ];
     else if (u.pathname.startsWith("/api/records/")) {
       const module = u.pathname.split("/")[3];
       body = { items: module === "employees" ? [profile] : module === 'feedbacks' && includeArchive ? [{

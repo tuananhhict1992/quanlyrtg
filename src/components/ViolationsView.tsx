@@ -30,6 +30,10 @@ import {
   Filter,
   ArrowUpRight,
   BookOpen,
+  Edit3,
+  Save,
+  X,
+  Clock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { IncidentViolation, IncidentAnalysisReport, Employee, AppSettings } from '../types';
@@ -104,6 +108,8 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   const [copiedExcel, setCopiedExcel] = useState<boolean>(false);
   const [showRawMarkdown, setShowRawMarkdown] = useState<boolean>(false);
   const [selectedIncidentForDetail, setSelectedIncidentForDetail] = useState<IncidentViolation | null>(null);
+  const [confirmDeleteIncident, setConfirmDeleteIncident] = useState<IncidentViolation | null>(null);
+  const [isDeletingIncident, setIsDeletingIncident] = useState<boolean>(false);
   const [syncSuccessModal, setSyncSuccessModal] = useState<{ count: number; updatedNames: string[] } | null>(null);
   const [isActionHubOpen, setIsActionHubOpen] = useState<boolean>(false);
   
@@ -127,6 +133,12 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   const [dataRtgSpreadsheetUrlInput, setDataRtgSpreadsheetUrlInput] = useState<string>(
     appSettings?.dataRtgSpreadsheetUrl || appSettings?.dataRtgSpreadsheetId || ''
   );
+
+  // Trạng thái cập nhật / chỉnh sửa vi phạm (dành cho Admin và Người được phân quyền)
+  const [editingIncident, setEditingIncident] = useState<IncidentViolation | null>(null);
+  const [editFormData, setEditFormData] = useState<Partial<IncidentViolation>>({});
+  const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
+  const [editSuccessMsg, setEditSuccessMsg] = useState<string | null>(null);
 
   // Phân quyền quản trị vi phạm
   const canManageViolations = currentUser.role==='ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_VIOLATIONS');
@@ -442,7 +454,56 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
     finally {syncLock.current=false;setIsSyncingProfiles(false);}
   };
   const handleClearIncidents = () => {
-    if(window.confirm('Xóa toàn bộ bảng đối soát đang chờ? Các vụ việc đã đồng bộ vẫn được giữ.')) void removeDrafts(draftIncidents);
+    void removeDrafts(draftIncidents);
+  };
+
+  // Xóa vụ việc đã đồng bộ, hoàn trả điểm và cập nhật lại hồ sơ nhân sự
+  const handleDeletePublishedIncident = async (item: IncidentViolation) => {
+    setIsDeletingIncident(true);
+    setOperationError(null);
+    try {
+      const res = await api<{ success: boolean; deletedIncidentId: string; updatedEmployee?: Employee }>(
+        '/operations/incidents/' + encodeURIComponent(item.id),
+        { method: 'DELETE' }
+      );
+      // 1. Xóa vụ việc khỏi danh sách hiển thị
+      onDiscardIncidents?.([item.id]);
+      // 2. Đồng bộ lại hồ sơ nhân sự
+      if (res.updatedEmployee) {
+        onUpdateEmployee(res.updatedEmployee);
+      } else if (item.matchedEmployeeId) {
+        const emp = profileEmployees.find((e) => e.id === item.matchedEmployeeId);
+        if (emp && emp.violationRecords) {
+          const points =
+            Number(item.pointsDeducted) ||
+            (item.severity === 'NGHIEM_TRONG' ? 15 : item.severity === 'TRUNG_BINH' ? 10 : 5);
+          const newRecs = emp.violationRecords.filter(
+            (vr) =>
+              vr.incidentId !== item.id &&
+              !(vr.incidentCode === item.code && vr.time === item.time),
+          );
+          const updatedEmp: Employee = {
+            ...emp,
+            violationRecords: newRecs,
+            violationCount: Math.max(0, (emp.violationCount || 1) - 1),
+            competencyScore: Math.min(100, (emp.competencyScore ?? 100) + points),
+          };
+          onUpdateEmployee(updatedEmp);
+        }
+      }
+      setConfirmDeleteIncident(null);
+      if (selectedIncidentForDetail?.id === item.id) {
+        setSelectedIncidentForDetail(null);
+      }
+      setEditSuccessMsg(
+        `Đã xóa vụ việc ${item.code} và hoàn trả điểm, đồng bộ lại hồ sơ cho nhân sự ${item.violatorName}!`,
+      );
+      setTimeout(() => setEditSuccessMsg(null), 4000);
+    } catch (error: any) {
+      setOperationError(error.message || 'Không thể xóa vụ việc đã đồng bộ.');
+    } finally {
+      setIsDeletingIncident(false);
+    }
   };
 
   // Sao chép Markdown Table (8 cột chuẩn)
@@ -491,6 +552,154 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   };
   const handleSyncToEmployeeProfiles=()=>confirmDrafts(draftIncidents.filter(item=>item.isRtgRelated));
   const handleSyncSingleIncident=(item:IncidentViolation)=>confirmDrafts([item]);
+
+  // Khởi tạo chỉnh sửa vụ việc
+  const handleStartEditIncident = (item: IncidentViolation) => {
+    if (!canManageViolations) return;
+    setEditingIncident(item);
+    setEditFormData({
+      ...item,
+      pointsDeducted: item.pointsDeducted ?? (item.severity === 'NGHIEM_TRONG' ? 15 : item.severity === 'TRUNG_BINH' ? 10 : 5),
+    });
+    setEditSuccessMsg(null);
+    setOperationError(null);
+  };
+
+  // Chọn nhân viên liên kết từ danh sách hệ thống
+  const handleEditSelectEmployee = (empId: string) => {
+    const matched = employees.find((e) => e.id === empId);
+    if (matched) {
+      setEditFormData((prev) => ({
+        ...prev,
+        matchedEmployeeId: matched.id,
+        matchedEmployeeCode: matched.employeeCode,
+        matchedEmployeeName: matched.fullName,
+        matchedDepartment: matched.department,
+        violatorName: matched.fullName,
+        normalizedName: matched.fullName,
+        department: matched.department || 'Tổ RTG',
+        isMatchedWithSystem: true,
+        isRtgRelated: true,
+      }));
+    } else {
+      setEditFormData((prev) => ({
+        ...prev,
+        matchedEmployeeId: undefined,
+        matchedEmployeeCode: undefined,
+        matchedEmployeeName: undefined,
+        matchedDepartment: undefined,
+        isMatchedWithSystem: false,
+      }));
+    }
+  };
+
+  // Lưu thông tin chỉnh sửa vụ việc vi phạm
+  const handleSaveEditIncident = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canManageViolations || !editingIncident) return;
+
+    const code = (editFormData.code || '').trim();
+    const violatorName = (editFormData.violatorName || '').trim();
+
+    if (!code) {
+      alert('Vui lòng nhập mã vụ việc.');
+      return;
+    }
+    if (!violatorName) {
+      alert('Vui lòng nhập tên nhân viên vi phạm.');
+      return;
+    }
+
+    const updated: IncidentViolation = {
+      ...editingIncident,
+      ...editFormData,
+      code,
+      violatorName,
+      normalizedName: (editFormData.normalizedName || violatorName).trim(),
+      time: (editFormData.time || editingIncident.time).trim(),
+      location: (editFormData.location || editingIncident.location).trim(),
+      equipment: (editFormData.equipment || '').trim(),
+      department: (editFormData.department || 'Tổ RTG').trim(),
+      what: (editFormData.what || '').trim(),
+      why: (editFormData.why || '').trim(),
+      how: (editFormData.how || '').trim(),
+      severity: editFormData.severity || editingIncident.severity || 'TRUNG_BINH',
+      sourceAppendix: editFormData.sourceAppendix || editingIncident.sourceAppendix || 'PHU_LUC_2',
+      pointsDeducted: Number(editFormData.pointsDeducted) || (editFormData.severity === 'NGHIEM_TRONG' ? 15 : editFormData.severity === 'TRUNG_BINH' ? 10 : 5),
+    };
+
+    setIsSavingEdit(true);
+    setOperationError(null);
+
+    try {
+      if (editingIncident.isSyncedToProfile) {
+        // Bản ghi đã lưu trên máy chủ / cơ sở dữ liệu
+        await api<IncidentViolation>('/records/incidents/' + encodeURIComponent(editingIncident.id), {
+          method: 'PUT',
+          body: JSON.stringify({ data: updated }),
+        });
+
+        // Cập nhật danh sách incidents ở cấp App
+        onUpdateIncidents?.([updated]);
+
+        // Cập nhật hồ sơ nhân viên nếu vụ việc đã được gán vào hồ sơ
+        if (updated.matchedEmployeeId) {
+          const emp = profileEmployees.find((e) => e.id === updated.matchedEmployeeId);
+          if (emp && emp.violationRecords && emp.violationRecords.length > 0) {
+            const updatedRecords = emp.violationRecords.map((vr) => {
+              if (
+                vr.incidentId === updated.id ||
+                (vr.incidentCode === editingIncident.code && vr.time === editingIncident.time)
+              ) {
+                return {
+                  ...vr,
+                  incidentCode: updated.code,
+                  time: updated.time,
+                  location: updated.location,
+                  equipment: updated.equipment,
+                  what: updated.what,
+                  why: updated.why,
+                  how: updated.how,
+                  severity: (updated.severity === 'NGHIEM_TRONG' ? 'HIGH' : updated.severity === 'TRUNG_BINH' ? 'MEDIUM' : 'LOW') as 'HIGH' | 'MEDIUM' | 'LOW',
+                  pointsDeducted: updated.pointsDeducted || 5,
+                };
+              }
+              return vr;
+            });
+
+            const updatedEmp: Employee = {
+              ...emp,
+              violationRecords: updatedRecords,
+            };
+
+            try {
+              await api<Employee>('/records/employees/' + encodeURIComponent(emp.id), {
+                method: 'PUT',
+                body: JSON.stringify({ data: { violationRecords: updatedRecords } }),
+              });
+              onUpdateEmployee(updatedEmp);
+            } catch (empErr) {
+              console.warn('Không thể đồng bộ cập nhật violationRecords của nhân viên:', empErr);
+            }
+          }
+        }
+      } else {
+        // Bản ghi đang trong bảng đối soát nháp (Draft)
+        setDraftIncidents((prev) => prev.map((i) => (i.id === editingIncident.id ? updated : i)));
+      }
+
+      setEditSuccessMsg('Đã cập nhật thông tin vi phạm thành công!');
+      setTimeout(() => {
+        setEditingIncident(null);
+        setEditSuccessMsg(null);
+      }, 1000);
+    } catch (err: any) {
+      console.error('Lỗi khi lưu chỉnh sửa vi phạm:', err);
+      setOperationError(err.message || 'Không thể lưu chỉnh sửa vụ việc. Vui lòng thử lại.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   return (
     <div className="space-y-6 pb-12">
@@ -546,7 +755,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 <Layers className="w-4 h-4 text-indigo-200" />
                 <span>Tiện ích & Tác vụ</span>
                 <span className="px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] font-extrabold tracking-wide">
-                  8
+                  7
                 </span>
               </button>
             ) : (
@@ -787,28 +996,26 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
           </div>
         </div>
 
-        {/* Nút hành động Đồng bộ tất cả (Dành cho Quản lý) hoặc Trạng thái Sheet Data_RTG (Dành cho Nhân viên) */}
+        {/* Thẻ 4: Trạng thái Dữ liệu & Hồ sơ */}
         {canManageViolations ? (
-          <div className="bg-white p-5 rounded-2xl border border-indigo-200 shadow-xs flex flex-col justify-between bg-gradient-to-b from-indigo-50/30 to-white">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-indigo-900 uppercase tracking-wider">Hồ sơ Nhân sự</span>
-                <span className="p-2 rounded-xl bg-indigo-100 text-indigo-700">
-                  <Sparkles className="w-5 h-5" />
-                </span>
-              </div>
-              <div className="text-xs text-slate-600 mt-2">
-                Đồng bộ vi phạm vào hồ sơ nhân sự nội bộ hệ thống để tính điểm năng lực tháng & năm.
-              </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Trạng thái dữ liệu</span>
+              <span className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
+                <CheckCircle2 className="w-5 h-5" />
+              </span>
             </div>
-            <button
-              disabled={isSyncingProfiles || isProcessing || !draftIncidents.length}
-              onClick={handleSyncToEmployeeProfiles}
-              className="w-full py-2.5 px-3 mt-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              Đồng bộ vào Hồ sơ Nhân sự (Nội bộ)
-            </button>
+            <div className="text-3xl font-extrabold text-slate-900 mt-2">
+              {publishedIncidents.length}
+            </div>
+            <div className="text-xs text-slate-500 font-medium mt-1 flex items-center justify-between">
+              <span>Đã lưu hệ thống</span>
+              {draftIncidents.length > 0 && (
+                <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                  {draftIncidents.length} chờ đối soát
+                </span>
+              )}
+            </div>
           </div>
         ) : (
           <div className="bg-white p-5 rounded-2xl border border-emerald-200 shadow-xs flex flex-col justify-between bg-gradient-to-b from-emerald-50/30 to-white">
@@ -1107,10 +1314,52 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
         </div>
       )}
 
-      {canManageViolations && <div className="flex gap-2">
-        <button className="px-4 py-2 rounded-xl border text-sm font-bold" aria-pressed={viewMode==='DRAFT'} onClick={()=>setViewMode('DRAFT')}>Bảng đối soát ({draftIncidents.length})</button>
-        <button className="px-4 py-2 rounded-xl border text-sm font-bold" aria-pressed={viewMode==='PUBLISHED'} onClick={()=>setViewMode('PUBLISHED')}>Đã đồng bộ ({publishedIncidents.length})</button>
-      </div>}
+      {canManageViolations && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50/80 rounded-2xl border border-slate-200">
+          <div className="flex items-center gap-2">
+            <button
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                viewMode === 'DRAFT'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+              aria-pressed={viewMode === 'DRAFT'}
+              onClick={() => setViewMode('DRAFT')}
+            >
+              Bảng đối soát nháp ({draftIncidents.length})
+            </button>
+            <button
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                viewMode === 'PUBLISHED'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+              aria-pressed={viewMode === 'PUBLISHED'}
+              onClick={() => setViewMode('PUBLISHED')}
+            >
+              Đã đồng bộ chính thức ({publishedIncidents.length})
+            </button>
+          </div>
+
+          {/* NÚT ĐỒNG BỘ DUY NHẤT VÀ NỔI BẬT DÀNH CHO ADMIN / QUẢN LÝ */}
+          {draftIncidents.filter((i) => i.isRtgRelated).length > 0 && (
+            <button
+              id="btn-unified-sync-violations"
+              disabled={isSyncingProfiles || isProcessing}
+              onClick={handleSyncToEmployeeProfiles}
+              className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 disabled:opacity-50 text-white text-xs sm:text-sm font-extrabold rounded-xl shadow-md shadow-emerald-700/20 transition-all flex items-center gap-2 cursor-pointer hover:scale-101"
+              title="Đồng nhất đồng bộ toàn bộ vụ việc Tổ RTG đã đối soát vào cơ sở dữ liệu và hồ sơ KPI nhân sự"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>
+                {isSyncingProfiles
+                  ? 'Đang đồng bộ…'
+                  : `Đồng bộ vào Hệ thống & Hồ sơ (${draftIncidents.filter((i) => i.isRtgRelated).length} vụ việc)`}
+              </span>
+            </button>
+          )}
+        </div>
+      )}
       {/* 5. Bảng Kết Quả Đối Soát & Đồng Bộ Hồ Sơ / Bảng Tra Cứu Vi Phạm */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/60">
@@ -1147,7 +1396,155 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Giao diện Thẻ Sự cố Tối ưu hóa cho Điện thoại di động (iPhone / Android) Màn hình dọc */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {filteredIncidents.length === 0 ? (
+            <div className="py-12 px-4 text-center text-slate-400">
+              <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+              <p className="text-xs">Không tìm thấy sự cố hoặc vi phạm nào thuộc Tổ RTG khớp với bộ lọc.</p>
+            </div>
+          ) : (
+            filteredIncidents.map((item, index) => {
+              const isSevere = item.severity === 'NGHIEM_TRONG';
+              const isMedium = item.severity === 'TRUNG_BINH';
+              const points = item.pointsDeducted ?? (isSevere ? 15 : isMedium ? 10 : 5);
+
+              return (
+                <div
+                  key={item.id || index}
+                  className={`p-4 space-y-3 transition-colors ${
+                    isSevere ? 'bg-red-50/20' : isMedium ? 'bg-amber-50/15' : 'bg-white'
+                  }`}
+                >
+                  {/* Top Bar: Code + Badges */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200">
+                        {item.code}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium">
+                        {item.time}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          isSevere
+                            ? 'bg-red-100 text-red-800'
+                            : isMedium
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {isSevere ? 'Nghiêm trọng' : isMedium ? 'Trung bình' : 'Nhắc nhở'}
+                      </span>
+                      {canManageViolations && (
+                        item.isSyncedToProfile ? (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold inline-flex items-center gap-1">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                            Đã lưu
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold inline-flex items-center gap-1">
+                            <Clock className="w-2.5 h-2.5 text-amber-600" />
+                            Nháp
+                          </span>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Nhân viên vi phạm & Thiết bị */}
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                      {item.violatorName ? item.violatorName.slice(-1) : 'RTG'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-slate-900 text-sm">{item.violatorName}</span>
+                        {item.matchedEmployeeCode && (
+                          <span className="text-[10px] text-slate-500 font-mono">({item.matchedEmployeeCode})</span>
+                        )}
+                        <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
+                          -{points}đ KPI
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span>{item.department || item.managingUnit || 'Tổ RTG'}</span>
+                        {item.equipment && <span>• Cẩu: <strong>{item.equipment}</strong></span>}
+                        {item.location && <span>• Bãi: <strong>{item.location}</strong></span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Mô tả Vi phạm / Hậu quả (What) */}
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-xs">
+                    <div className="font-semibold text-slate-800 line-clamp-2">
+                      {item.what}
+                    </div>
+                    {item.why && (
+                      <div className="text-slate-600 text-[11px] mt-1 pt-1 border-t border-slate-200/60 line-clamp-2">
+                        <strong className="text-slate-700">Nguyên nhân:</strong> {item.why}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Nút thao tác cảm ứng lớn cho điện thoại */}
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIncidentForDetail(item)}
+                      className="flex-1 py-2 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Chi tiết 5W1H</span>
+                    </button>
+
+                    {canManageViolations && (
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditIncident(item)}
+                        className="py-2 px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1 border border-amber-200 active:scale-95"
+                        title="Chỉnh sửa vụ việc"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="hidden sm:inline">Sửa</span>
+                      </button>
+                    )}
+
+                    {canManageViolations && viewMode === 'DRAFT' && (
+                      <button
+                        type="button"
+                        onClick={() => void removeDrafts([item])}
+                        className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1 border border-rose-200 active:scale-95"
+                        title="Xóa vụ việc khỏi bảng nháp"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        <span className="hidden sm:inline">Xóa</span>
+                      </button>
+                    )}
+
+                    {canManageViolations && viewMode === 'PUBLISHED' && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteIncident(item)}
+                        className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1 border border-rose-200 active:scale-95"
+                        title="Xóa vụ việc và đồng bộ lại hồ sơ nhân sự"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        <span className="hidden sm:inline">Xóa</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Giao diện Bảng tính Table dành cho Desktop / Tablet (>= md) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-100/90 text-slate-700 font-bold border-b border-slate-200">
@@ -1302,14 +1699,10 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                               Đã lưu hồ sơ
                             </span>
                           ) : (
-                            <button
-                              disabled={isSyncingProfiles}
-                              onClick={() => handleSyncSingleIncident(item)}
-                              className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold transition-colors cursor-pointer"
-                              title="Đồng bộ vụ việc này vào hồ sơ nhân sự"
-                            >
-                              Đồng bộ ngay
-                            </button>
+                            <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold inline-flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-amber-600" />
+                              Chờ đồng bộ
+                            </span>
                           )
                         ) : (
                           <span
@@ -1339,16 +1732,30 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                         >
                           <Eye className="w-4 h-4" />
                         </button>
+                        {canManageViolations && (
+                          <button
+                            onClick={() => handleStartEditIncident(item)}
+                            className="p-1.5 hover:bg-amber-50 text-amber-600 rounded-lg transition-colors cursor-pointer ml-1"
+                            title="Chỉnh sửa thông tin vi phạm"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                        )}
                         {canManageViolations && viewMode==='DRAFT' && (
                           <button
                             disabled={isSyncingProfiles}
-                            onClick={() => {
-                              if (confirm(`Bạn có chắc muốn xóa vụ việc ${item.code}?`)) {
-                                void removeDrafts([item]);
-                              }
-                            }}
+                            onClick={() => void removeDrafts([item])}
                             className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg transition-colors cursor-pointer ml-1"
-                            title="Xóa vụ việc"
+                            title="Xóa vụ việc khỏi bảng đối soát"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canManageViolations && viewMode==='PUBLISHED' && (
+                          <button
+                            onClick={() => setConfirmDeleteIncident(item)}
+                            className="p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg transition-colors cursor-pointer ml-1"
+                            title="Xóa vụ việc này và đồng bộ lại hồ sơ nhân sự"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1479,8 +1886,8 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
 
       {/* Modal Chi tiết Vụ việc */}
       {selectedIncidentForDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-bold text-xs font-mono">
@@ -1551,25 +1958,49 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-              <div>
-                {(currentUser.role === 'ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_VIOLATIONS')) && selectedIncidentForDetail.isSyncedToProfile && selectedIncidentForDetail.isRtgRelated && onNotifyZalo && <button type="button" className="px-4 py-2 rounded-lg bg-blue-700 text-white" onClick={() => { onNotifyZalo(selectedIncidentForDetail); setSelectedIncidentForDetail(null); }}>Thông báo nội bộ</button>}
-                {canManageViolations && !selectedIncidentForDetail.isSyncedToProfile ? (
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {canManageViolations && (
                   <button
                     onClick={() => {
-                      handleSyncSingleIncident(selectedIncidentForDetail);
+                      const item = selectedIncidentForDetail;
                       setSelectedIncidentForDetail(null);
+                      handleStartEditIncident(item);
                     }}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl cursor-pointer flex items-center gap-1.5"
+                    className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 border border-amber-200"
                   >
-                    <CheckCircle2 className="w-4 h-4" />
-                    Đồng bộ vào Hồ sơ Nhân sự
+                    <Edit3 className="w-4 h-4 text-amber-600" />
+                    Chỉnh sửa vụ việc
                   </button>
-                ) : (
-                  <span className="text-emerald-600 font-bold text-xs flex items-center gap-1">
-                    <CheckCircle2 className="w-4 h-4" />
-                    Đã đồng bộ & cập nhật vào hồ sơ năng lực nhân sự
+                )}
+                {(currentUser.role === 'ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_VIOLATIONS')) && selectedIncidentForDetail.isSyncedToProfile && selectedIncidentForDetail.isRtgRelated && onNotifyZalo && <button type="button" className="px-4 py-2 rounded-lg bg-blue-700 text-white" onClick={() => { onNotifyZalo(selectedIncidentForDetail); setSelectedIncidentForDetail(null); }}>Thông báo nội bộ</button>}
+                {canManageViolations && !selectedIncidentForDetail.isSyncedToProfile ? (
+                  <span className="text-amber-700 font-semibold text-xs flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-xl border border-amber-200">
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    Bản ghi nháp (Dùng nút Đồng bộ ở đầu bảng để hoàn tất)
                   </span>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-600 font-bold text-xs flex items-center gap-1">
+                      <CheckCircle2 className="w-4 h-4" />
+                      Đã đồng bộ hồ sơ
+                    </span>
+                    {canManageViolations && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const itemToDelete = selectedIncidentForDetail;
+                          setSelectedIncidentForDetail(null);
+                          setConfirmDeleteIncident(itemToDelete);
+                        }}
+                        className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 border border-rose-200"
+                        title="Xóa vụ việc này và đồng bộ hoàn trả điểm vào hồ sơ nhân sự"
+                      >
+                        <Trash2 className="w-4 h-4 text-rose-600" />
+                        <span>Xóa vụ việc & Đồng bộ lại hồ sơ</span>
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -1614,6 +2045,77 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
             >
               Hoàn tất
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Xác nhận Xóa Vụ việc đã đồng bộ & Đồng bộ lại Hồ sơ */}
+      {confirmDeleteIncident && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center">
+              <h3 className="text-lg font-bold text-slate-900">
+                Xóa Vụ việc & Đồng bộ lại Hồ sơ?
+              </h3>
+              <p className="text-xs text-slate-600 mt-1">
+                Thao tác này sẽ xóa vụ việc khỏi hệ thống và tự động hoàn trả điểm năng lực, cập nhật lại hồ sơ nhân viên.
+              </p>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Mã vụ việc:</span>
+                <span className="font-bold text-slate-900">{confirmDeleteIncident.code}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Nhân viên vi phạm:</span>
+                <span className="font-bold text-indigo-700">
+                  {confirmDeleteIncident.violatorName} ({confirmDeleteIncident.department})
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Thời gian:</span>
+                <span className="text-slate-800">{confirmDeleteIncident.time}</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200/80 pt-2">
+                <span className="text-slate-500">Hoàn trả điểm năng lực:</span>
+                <span className="font-bold text-emerald-600">
+                  +{confirmDeleteIncident.pointsDeducted ??
+                    (confirmDeleteIncident.severity === 'NGHIEM_TRONG'
+                      ? 15
+                      : confirmDeleteIncident.severity === 'TRUNG_BINH'
+                      ? 10
+                      : 5)}{' '}
+                  điểm KPI
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingIncident}
+                onClick={() => setConfirmDeleteIncident(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingIncident}
+                onClick={() => void handleDeletePublishedIncident(confirmDeleteIncident)}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl cursor-pointer flex items-center gap-1.5 shadow-sm"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>
+                  {isDeletingIncident ? 'Đang xóa & đồng bộ…' : 'Xác nhận xóa & Đồng bộ lại'}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1707,34 +2209,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 </div>
               </button>
 
-              {/* 3. Đồng Bộ Vào Hồ Sơ Nhân Sự */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsActionHubOpen(false);
-                  handleSyncToEmployeeProfiles();
-                }}
-                className="p-3.5 rounded-2xl border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100/70 hover:border-indigo-400 text-left transition-all group flex items-start gap-3 cursor-pointer shadow-2xs"
-              >
-                <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs shadow-indigo-200 group-hover:scale-105 transition-transform">
-                  <CheckCircle2 className="w-4 h-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <span className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-indigo-800">
-                      3. Đồng Bộ Vào Hồ Sơ
-                    </span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-200/80 text-indigo-900">
-                      KPI
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 leading-relaxed">
-                    Ghi nhận vi phạm trực tiếp vào hồ sơ nhân sự Tổ RTG và khấu trừ điểm năng lực.
-                  </p>
-                </div>
-              </button>
-
-              {/* 4. Nạp Dữ Liệu Mẫu RTG */}
+              {/* 3. Nạp Dữ Liệu Mẫu RTG */}
               <button
                 type="button"
                 onClick={() => {
@@ -1749,7 +2224,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-amber-800">
-                      4. Nạp Dữ Liệu Mẫu RTG
+                      3. Nạp Dữ Liệu Mẫu RTG
                     </span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-200/80 text-amber-900">
                       Demo
@@ -1761,7 +2236,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 </div>
               </button>
 
-              {/* 5. Sao Chép Bảng Markdown (8 cột) */}
+              {/* 4. Sao Chép Bảng Markdown (8 cột) */}
               <button
                 type="button"
                 onClick={handleCopyMarkdown}
@@ -1773,7 +2248,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-blue-800">
-                      5. Sao Chép Markdown
+                      4. Sao Chép Markdown
                     </span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-200/80 text-blue-900 font-mono">
                       8 Cột
@@ -1785,7 +2260,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 </div>
               </button>
 
-              {/* 6. Sao Chép Cho Excel (TSV) */}
+              {/* 5. Sao Chép Cho Excel (TSV) */}
               <button
                 type="button"
                 onClick={handleCopyExcel}
@@ -1797,7 +2272,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-teal-800">
-                      6. Sao Chép Cho Excel
+                      5. Sao Chép Cho Excel
                     </span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-200/80 text-teal-900 font-mono">
                       TSV
@@ -1809,7 +2284,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 </div>
               </button>
 
-              {/* 7. Xuất Báo Cáo Excel (.xlsx) */}
+              {/* 6. Xuất Báo Cáo Excel (.xlsx) */}
               <button
                 type="button"
                 onClick={() => {
@@ -1824,10 +2299,10 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-emerald-800">
-                      7. Xuất File Excel (.xlsx)
+                      6. Xuất File Excel (.xlsx)
                     </span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-200/80 text-emerald-900 font-mono">
-                      .xlsx
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-200 text-emerald-900 font-mono">
+                      .XLSX
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
@@ -1836,7 +2311,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 </div>
               </button>
 
-              {/* 8. Webhook Google Apps Script */}
+              {/* 7. Xếp hàng báo cáo Google */}
               {currentUser?.role === 'ADMIN' && <button
                 type="button"
                 onClick={() => {
@@ -1852,7 +2327,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-slate-800">
-                      8. Xếp hàng báo cáo Google
+                      7. Xếp hàng báo cáo Google
                     </span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200 text-slate-800 font-mono">
                       Queue
@@ -1864,7 +2339,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 </div>
               </button>}
 
-              {/* 7. Xóa Toàn Bộ Danh Sách Vụ Việc */}
+              {/* 8. Xóa Toàn Bộ Danh Sách Vụ Việc */}
               <button
                 type="button"
                 onClick={() => {
@@ -1879,7 +2354,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-rose-800">
-                      7. Xóa Toàn Bộ Danh Sách Vụ Việc
+                      8. Xóa Toàn Bộ Danh Sách Vụ Việc
                     </span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-200/80 text-rose-900">
                       Làm mới
@@ -1913,6 +2388,271 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                 Đóng
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Chỉnh Sửa / Cập Nhật Vi Phạm - Dành cho Admin và Người được phân quyền */}
+      {canManageViolations && editingIncident && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[92dvh] overflow-y-auto p-5 sm:p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200/60 shrink-0">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base sm:text-lg">
+                    Cập Nhật & Chỉnh Sửa Vi Phạm
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Mã: <span className="font-mono font-bold text-slate-700">{editingIncident.code}</span> · {editingIncident.isSyncedToProfile ? 'Dữ liệu đã lưu hệ thống' : 'Bảng đối soát nháp'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingIncident(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold cursor-pointer transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Success message banner */}
+            {editSuccessMsg && (
+              <div className="mt-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{editSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleSaveEditIncident} className="mt-4 space-y-4 text-left flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Mã vụ việc */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Mã vụ việc <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.code || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, code: e.target.value })}
+                    placeholder="SC-01, VP-02..."
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all font-mono font-bold"
+                  />
+                </div>
+
+                {/* Thời gian */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Thời gian (When)
+                  </label>
+                  <input
+                    type="text"
+                    value={editFormData.time || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, time: e.target.value })}
+                    placeholder="08:30 15/03/2026..."
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all"
+                  />
+                </div>
+
+                {/* Địa điểm */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Địa điểm (Where)
+                  </label>
+                  <input
+                    type="text"
+                    value={editFormData.location || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, location: e.target.value })}
+                    placeholder="Bãi E5, Cầu tàu 1..."
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Tên nhân viên vi phạm */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Nhân viên vi phạm (Who) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.violatorName || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, violatorName: e.target.value, normalizedName: e.target.value })}
+                    placeholder="Họ và tên..."
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all font-semibold"
+                  />
+                </div>
+
+                {/* Liên kết nhân sự hệ thống */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Khớp nhân sự hệ thống
+                  </label>
+                  <select
+                    value={editFormData.matchedEmployeeId || ''}
+                    onChange={(e) => handleEditSelectEmployee(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all"
+                  >
+                    <option value="">— Chưa gán nhân sự —</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.fullName} ({emp.employeeCode || emp.id} - {emp.department})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Thiết bị cẩu khung */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Thiết bị cẩu khung
+                  </label>
+                  <input
+                    type="text"
+                    value={editFormData.equipment || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, equipment: e.target.value })}
+                    placeholder="RTG 02, RTG 05..."
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                {/* Mức độ vi phạm */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Mức độ nghiêm trọng
+                  </label>
+                  <select
+                    value={editFormData.severity || 'TRUNG_BINH'}
+                    onChange={(e) => {
+                      const sev = e.target.value as any;
+                      const defaultPoints = sev === 'NGHIEM_TRONG' ? 15 : sev === 'TRUNG_BINH' ? 10 : 5;
+                      setEditFormData({ ...editFormData, severity: sev, pointsDeducted: defaultPoints });
+                    }}
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all"
+                  >
+                    <option value="THAP">Nhẹ / Nhắc nhở (-5đ)</option>
+                    <option value="TRUNG_BINH">Trung bình (-10đ)</option>
+                    <option value="NGHIEM_TRONG">Nghiêm trọng (-15đ)</option>
+                  </select>
+                </div>
+
+                {/* Phân loại phụ lục */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Phân loại phụ lục
+                  </label>
+                  <select
+                    value={editFormData.sourceAppendix || 'PHU_LUC_2'}
+                    onChange={(e) => setEditFormData({ ...editFormData, sourceAppendix: e.target.value as any })}
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all"
+                  >
+                    <option value="PHU_LUC_1">Phụ lục 1: Sự cố / Tai nạn</option>
+                    <option value="PHU_LUC_2">Phụ lục 2: Vi phạm nội quy</option>
+                    <option value="OTHER">Khác</option>
+                  </select>
+                </div>
+
+                {/* Điểm trừ năng lực */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Điểm trừ năng lực (đ)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={editFormData.pointsDeducted ?? 5}
+                    onChange={(e) => setEditFormData({ ...editFormData, pointsDeducted: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all font-bold text-rose-600"
+                  />
+                </div>
+
+                {/* Đơn vị quản lý */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Đơn vị / Chức danh
+                  </label>
+                  <input
+                    type="text"
+                    value={editFormData.department || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, department: e.target.value })}
+                    placeholder="Tổ RTG / Lái cẩu RTG..."
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Mô tả Vi phạm / Hậu quả (What) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Mô tả Vi phạm / Hậu quả (What)
+                </label>
+                <textarea
+                  rows={2}
+                  value={editFormData.what || ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, what: e.target.value })}
+                  placeholder="Diễn biến sự việc, va chạm, sự cố thiết bị hoặc nội dung vi phạm..."
+                  className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all leading-relaxed"
+                />
+              </div>
+
+              {/* Nguyên nhân cốt lõi (Why) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Nguyên nhân cốt lõi (Why)
+                </label>
+                <textarea
+                  rows={2}
+                  value={editFormData.why || ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, why: e.target.value })}
+                  placeholder="Lỗi thao tác, thiếu quan sát, vi phạm quy trình vận hành cẩu..."
+                  className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all leading-relaxed"
+                />
+              </div>
+
+              {/* Biện pháp xử lý / Trách nhiệm (How) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Biện pháp xử lý / Trách nhiệm (How)
+                </label>
+                <textarea
+                  rows={2}
+                  value={editFormData.how || ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, how: e.target.value })}
+                  placeholder="Hình thức kỷ luật, nhắc nhở, kiểm điểm, hạ bậc thi đua hoặc bồi thường..."
+                  className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-hidden transition-all leading-relaxed"
+                />
+              </div>
+
+              {/* Footer Actions */}
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setEditingIncident(null)}
+                  className="px-4 py-2 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-2 hover:scale-101"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isSavingEdit ? 'Đang lưu…' : 'Lưu Thay Đổi'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

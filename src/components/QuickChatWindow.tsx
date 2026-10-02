@@ -367,7 +367,7 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
   // Minimized floating bar view
   if (isMinimized) {
     return (
-      <div className="fixed bottom-4 right-4 z-50 animate-fadeIn">
+      <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom,0px))] right-[max(1rem,env(safe-area-inset-right,0px))] z-50 animate-fadeIn">
         <button
           onClick={() => setIsMinimized(false)}
           className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-2xl shadow-xl border border-indigo-400/40 transition-all group"
@@ -400,8 +400,8 @@ export const QuickChatWindow: React.FC<QuickChatWindowProps> = ({
     <div
       className={`fixed z-50 transition-all duration-200 flex flex-col bg-white border border-slate-200 shadow-2xl overflow-hidden ${
         isExpanded
-          ? 'inset-3 sm:inset-10 md:inset-16 rounded-3xl'
-          : 'bottom-4 right-4 w-[95vw] sm:w-[460px] h-[580px] max-h-[90vh] rounded-3xl'
+          ? 'inset-2 sm:inset-10 md:inset-16 rounded-2xl sm:rounded-3xl'
+          : 'inset-x-2 bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] max-h-[calc(100dvh-4.5rem)] h-[560px] sm:inset-auto sm:bottom-[max(1rem,env(safe-area-inset-bottom,0px))] sm:right-[max(1rem,env(safe-area-inset-right,0px))] sm:w-[460px] sm:max-h-[88dvh] rounded-2xl sm:rounded-3xl'
       }`}
     >
       {/* Chat Window Top Bar Header */}

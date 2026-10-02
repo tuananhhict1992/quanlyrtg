@@ -309,7 +309,16 @@ export const QuizView: React.FC<QuizViewProps> = ({
 
   const handleSubmitQuiz = async () => {
     if(!attemptId||submitting)return;setSubmitting(true);setTimerActive(false);
-    try{const result=await api<QuizSubmission>('/exams/attempts/'+attemptId+'/submit',{method:'POST',body:JSON.stringify({answers:selectedAnswers})});await onSaveSubmission(result);setLatestResult(result);setActiveTab('RESULT');}catch(e){alert((e as Error).message);}finally{setSubmitting(false);}
+    try{
+      const result=await api<QuizSubmission>('/exams/attempts/'+attemptId+'/submit',{method:'POST',body:JSON.stringify({answers:selectedAnswers})});
+      await onSaveSubmission(result);
+      setLatestResult(result);
+      const unredacted = result.questions || quizzes.find(q => q.id === selectedQuiz.id)?.questions;
+      if (unredacted) {
+        setSelectedQuiz(prev => ({ ...prev, questions: unredacted }));
+      }
+      setActiveTab('RESULT');
+    }catch(e){alert((e as Error).message);}finally{setSubmitting(false);}
   };
 
   const formatTime = (seconds: number) => {
@@ -848,13 +857,16 @@ export const QuizView: React.FC<QuizViewProps> = ({
               {latestResult.passed ? 'Kết Quả: ĐẠT YÊU CẦU' : 'Kết Quả: CẦN ĐÀO TẠO LẠI'}
             </span>
 
-            <h3 className="text-3xl sm:text-4xl font-black text-slate-900 mb-2">
+            <h3 className="text-3xl sm:text-4xl font-black text-slate-900 mb-1">
               {latestResult.score} / 100 Điểm
             </h3>
+            <p className="text-xs sm:text-sm font-semibold text-indigo-700 mb-3">
+              (Tương đương {(latestResult.score / 10).toFixed(1)} / 10 điểm)
+            </p>
 
             <p className="text-sm text-slate-600 max-w-md mx-auto mb-4">
               Bạn đã trả lời đúng <b>{latestResult.correctCount}</b> trên tổng số{' '}
-              <b>{latestResult.totalQuestions}</b> câu hỏi. Kết quả đã được tự động lưu vào{' '}
+              <b>{latestResult.totalQuestions}</b> câu hỏi ({latestResult.totalQuestions > 0 ? Math.round((latestResult.correctCount / latestResult.totalQuestions) * 100) : 0}%). Kết quả đã được tự động lưu vào{' '}
               <b>Hồ sơ Đánh giá Năng lực</b> của nhân sự <b>{latestResult.employeeName}</b>.
             </p>
 
@@ -893,9 +905,11 @@ export const QuizView: React.FC<QuizViewProps> = ({
             </div>
 
             <div className="space-y-6">
-              {(selectedQuiz.questions || []).map((q, idx) => {
+              {(latestResult.questions || selectedQuiz.questions || []).map((q, idx) => {
                 const userChoice = latestResult.answers[q.id];
-                const isCorrect = userChoice === q.correctOptionId;
+                const originalQ = quizzes.find((qz) => qz.id === selectedQuiz.id)?.questions.find((item) => item.id === q.id);
+                const correctOptId = q.correctOptionId || originalQ?.correctOptionId;
+                const isCorrect = Boolean(userChoice && correctOptId && userChoice === correctOptId);
 
                 return (
                   <div
@@ -925,7 +939,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                     <div className="space-y-1.5 text-xs mb-3">
                       {(q.options || []).map((opt) => {
                         const isThisUserChoice = userChoice === opt.id;
-                        const isThisCorrect = q.correctOptionId === opt.id;
+                        const isThisCorrect = Boolean(correctOptId && correctOptId === opt.id);
 
                         let style = 'bg-white text-slate-700 border-slate-200';
                         if (isThisCorrect) {

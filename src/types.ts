@@ -252,6 +252,7 @@ export interface EmployeeViolationRecord {
   severity?: 'LOW' | 'MEDIUM' | 'HIGH';
   pointsDeducted?: number;
   recordedAt: string;
+  incidentId?: string;
 }
 
 export interface IncidentViolation {
@@ -490,6 +491,7 @@ export interface QuizSubmission {
   submittedAt: string;
   answers: Record<string, string>;
   competencyLevel: 'Xuất sắc' | 'Đạt' | 'Cần đào tạo lại';
+  questions?: QuizQuestion[];
 }
 
 export type FeedbackCategory =

@@ -207,12 +207,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Sidebar Container */}
       <aside
         id="workspace-navigation" aria-label="Điều hướng chính" data-open={mobileMenuOpen}
-        className={`hict-sidebar fixed top-0 bottom-0 left-0 z-50 w-[272px] bg-white border-r border-slate-200 flex flex-col transition-transform duration-200 ease-in-out lg:static lg:translate-x-0 ${
+        className={`hict-sidebar fixed top-0 bottom-0 left-0 z-50 w-[272px] sm:w-[280px] max-w-[85vw] bg-white border-r border-slate-200 flex flex-col transition-transform duration-200 ease-in-out lg:static lg:translate-x-0 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Sidebar Header for Mobile */}
-        <div className="p-4 border-b border-slate-100 lg:hidden flex items-center justify-between">
+        <div className="p-4 pt-[max(1rem,env(safe-area-inset-top,0px))] border-b border-slate-100 lg:hidden flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BrandLogo className="w-24" /><span className="font-bold text-slate-800 text-sm">Điều hành RTG</span>
           </div>

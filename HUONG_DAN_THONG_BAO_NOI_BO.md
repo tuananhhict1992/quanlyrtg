@@ -4,7 +4,7 @@ Cập nhật 27/09/2026. Thông báo được lưu trong Supabase PostgreSQL và
 
 ## Sử dụng
 
-1. Đăng nhập web, mở **Tin nhắn nội bộ** hoặc biểu tượng tin nhắn trên thanh trên cùng. Hộp thư giữ lịch sử và trạng thái đã đọc.
+1. Đăng nhập web, mở **Thông báo nội bộ** hoặc biểu tượng tin nhắn trên thanh trên cùng. Hộp thư giữ lịch sử và trạng thái đã đọc.
 2. Người có quyền quản trị thông báo chọn cá nhân, Ca hoặc toàn thể; nhập nội dung và bấm **Phát Thông Báo Nội Bộ Ngay**. Chat nhanh sử dụng cùng kênh nội bộ.
 3. Trong chi tiết vi phạm hoặc phiếu phép, người có thẩm quyền bấm **Thông báo nội bộ**, chọn cá nhân/Ca RTG/tập thể, sửa nội dung, **Xem trước thông báo** rồi **Xác nhận gửi vào app**. Duyệt/từ chối phép cũng mở bản nháp để kiểm tra trước khi gửi.
 4. Trong Kiểm tra, chọn người nhận rồi **Giao bài & Gửi thông báo**. Mỗi nhân viên nhận một thông báo cho đề được giao. Gửi lại cùng đề và người không tạo thêm tin.

@@ -204,11 +204,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {isAdmin && <button id="dash-edit-quick-links-btn" type="button" onClick={() => {setSaveLinksSuccess(null);setIsEditLinksOpen(true);}} className="hict-button hict-button-quiet"><Settings2 size={14} />Cài đặt liên kết (Admin)</button>}
           </div>
           <div className="hict-quick-grid">
-            <button id="dash-quick-search-btn" type="button" className="hict-quick-link hict-quick-blue" onClick={() => handleOpenQuickLink(appSettings?.traCuuLink,'Tra Cứu')}><Search /><strong>Tra cứu</strong><span>Liên kết nội bộ</span></button>
-            <button id="dash-quick-library-btn" type="button" className="hict-quick-link hict-quick-teal" onClick={() => handleOpenQuickLink(appSettings?.libraryLink || appSettings?.nqQdDriveLink,'Thư Viện')}><BookOpen /><strong>Thư viện</strong><span>Quy chế & tài liệu</span></button>
+            <button id="dash-quick-search-btn" type="button" className="hict-quick-link hict-quick-blue" onClick={() => handleOpenQuickLink(appSettings?.traCuuLink,'Tra Cứu NQ-QĐ')}><Search /><strong>Tra Cứu NQ-QĐ</strong><span>Nghị quyết & quy định</span></button>
+            <button id="dash-quick-library-btn" type="button" className="hict-quick-link hict-quick-teal" onClick={() => handleOpenQuickLink(appSettings?.libraryLink || appSettings?.nqQdDriveLink,'Tra Cứu Kỹ thuật')}><BookOpen /><strong>Tra Cứu Kỹ thuật</strong><span>Sổ tay & kỹ thuật</span></button>
             <button id="dash-quick-vehicle-btn" type="button" className="hict-quick-link hict-quick-amber" onClick={() => handleOpenQuickLink(appSettings?.vehicleStatusLink,'Tình trạng Phương tiện')}><Truck /><strong>Phương tiện</strong><span>Tình trạng kỹ thuật</span></button>
             <button id="dash-quick-engine-roof-btn" type="button" className="hict-quick-link hict-quick-orange" onClick={() => handleOpenQuickLink(appSettings?.engineRoofIncidentLink,'Nổ máy/ Thủng nóc')}><Flame /><strong>Nổ máy / Thủng nóc</strong><span>Sự cố thiết bị & vỏ</span></button>
-            <button id="dash-quick-violation-btn" type="button" className="hict-quick-link hict-quick-rose" onClick={() => handleOpenQuickLink(appSettings?.violationReportLink,'Vi phạm')}><ShieldCheck /><strong>Vi phạm & sự cố</strong><span>Báo cáo & theo dõi</span></button>
+            <button id="dash-quick-violation-btn" type="button" className="hict-quick-link hict-quick-rose" onClick={() => handleOpenQuickLink(appSettings?.violationReportLink,'Thư viện')}><BookOpen /><strong>Thư viện</strong><span>Tài liệu & quy định</span></button>
             <button id="dash-quick-quiz-btn" type="button" className="hict-quick-link hict-quick-violet" onClick={() => {if(appSettings?.quizLink?.trim())window.open(appSettings.quizLink.trim(),'_blank','noopener,noreferrer');else setActiveTab('quiz');}}><GraduationCap /><strong>Kiểm tra</strong><span>Đánh giá năng lực</span></button>
           </div>
           <button id="dash-quick-userinfo-btn" type="button" onClick={() => setShowUserInfo(true)} className="hict-button hict-quick-profile w-full mt-3"><User size={15} />Thông tin của tôi<ArrowRight size={14} className="ml-auto" /></button>
@@ -303,9 +303,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {headcountError && <p role="status" className="text-sm text-amber-700">{headcountError}{headcount ? ' Đang hiển thị số liệu gần nhất.' : ''}</p>}
       {/* Analytical Detail Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Department Breakdown */}
-        <div data-testid="dashboard-shift" className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        <div data-testid="dashboard-shift" className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
@@ -350,7 +350,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Competency & Testing Highlights */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
@@ -408,7 +408,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Violations and Incidents Overview (Tổ RTG) */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
@@ -448,7 +448,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Recent Zalo Notification Logs */}
       {/* Recent Internal Notifications */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -501,11 +501,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {showUserInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <User className="w-6 h-6 text-indigo-600" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90dvh] flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-slate-100">
+              <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
+                <User className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
                 Thông tin người dùng
               </h2>
               <button
@@ -516,7 +516,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </button>
             </div>
             
-            <div className="p-6 overflow-y-auto">
+            <div className="p-4 sm:p-6 overflow-y-auto">
               <div className="flex flex-col md:flex-row items-start gap-6 mb-8">
                 <UserAvatar src={currentUser.avatar} name={currentUser.fullName} className="w-24 h-24" />
                 <div className="flex-1 space-y-3">
@@ -593,8 +593,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             <span className="font-semibold text-slate-800 block">{sub.quizTitle}</span>
                             <span className="text-xs text-slate-500">{sub.submittedAt}</span>
                           </div>
-                          <div className={`px-2 py-1 rounded font-bold text-xs ${sub.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                            {sub.score} / {sub.totalQuestions} ({sub.passed ? 'Đạt' : 'Không đạt'})
+                          <div className={`px-2.5 py-1 rounded font-bold text-xs ${sub.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                            {sub.score}/100đ ({sub.correctCount ?? Math.round((sub.score * sub.totalQuestions) / 100)}/{sub.totalQuestions} câu · {sub.passed ? 'Đạt' : 'Chưa đạt'})
                           </div>
                         </div>
                       ))
@@ -791,8 +791,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Modal Cập nhật thông báo - Chỉ dành cho Admin */}
       {isEditAnnouncementOpen && isAdmin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white text-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white text-slate-900 rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-200 max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2.5 text-red-600">
                 <BellRing className="w-5 h-5" />
@@ -893,8 +893,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Modal Cài Đặt Đường Link Các Nút Tính Năng - Dành Cho Admin */}
       {isEditLinksOpen && isAdmin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white text-slate-900 rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 my-8 max-h-[92vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white text-slate-900 rounded-3xl max-w-3xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 my-auto max-h-[90dvh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 sticky top-0 bg-white z-10">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
@@ -957,13 +957,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             >
               {/* 2-Column Grid Layout for Form */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 1. Tra Cứu */}
+                {/* 1. Tra Cứu NQ-QĐ */}
                 <div className="p-3.5 rounded-2xl bg-blue-50/50 border border-blue-100 space-y-1.5 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-xs font-bold text-blue-950 flex items-center gap-2">
                         <Search className="w-4 h-4 text-blue-600" />
-                        <span>1. Nút "Tra Cứu"</span>
+                        <span>1. Nút "Tra Cứu NQ-QĐ"</span>
                       </label>
                       {traCuuLinkInput.trim() && (
                         <button
@@ -977,25 +977,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       )}
                     </div>
                     <p className="text-[11px] text-slate-500 mb-2">
-                      Tra cứu thông tin, lịch tàu, danh bạ nội bộ hoặc tài liệu bến cảng.
+                      Tra cứu thông tin, nghị quyết, quyết định, quy chế nội bộ bến cảng.
                     </p>
                   </div>
                   <input
                     type="url"
                     value={traCuuLinkInput}
                     onChange={(e) => setTraCuuLinkInput(e.target.value)}
-                    placeholder="https://... (Ví dụ: Tra cứu dữ liệu cảng)"
+                    placeholder="https://... (Ví dụ: Tra cứu NQ-QĐ cảng)"
                     className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden transition-all"
                   />
                 </div>
 
-                {/* 2. Thư Viện */}
+                {/* 2. Tra Cứu Kỹ thuật */}
                 <div className="p-3.5 rounded-2xl bg-teal-50/50 border border-teal-100 space-y-1.5 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-xs font-bold text-teal-950 flex items-center gap-2">
                         <BookOpen className="w-4 h-4 text-teal-600" />
-                        <span>2. Nút "Thư Viện"</span>
+                        <span>2. Nút "Tra Cứu Kỹ thuật"</span>
                       </label>
                       {libraryLinkInput.trim() && (
                         <button
@@ -1009,14 +1009,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       )}
                     </div>
                     <p className="text-[11px] text-slate-500 mb-2">
-                      Kho tài liệu, quy định, nghị quyết, quy trình vận hành cẩu RTG.
+                      Kho tài liệu kỹ thuật, sổ tay, quy trình bảo dưỡng và vận hành cẩu RTG.
                     </p>
                   </div>
                   <input
                     type="url"
                     value={libraryLinkInput}
                     onChange={(e) => setLibraryLinkInput(e.target.value)}
-                    placeholder="https://drive.google.com/... (Kho thư viện quy định/tài liệu)"
+                    placeholder="https://drive.google.com/... (Kho tra cứu kỹ thuật)"
                     className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-hidden transition-all"
                   />
                 </div>
@@ -1085,13 +1085,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   />
                 </div>
 
-                {/* 5. Vi phạm */}
+                {/* 5. Thư viện */}
                 <div className="p-3.5 rounded-2xl bg-rose-50/50 border border-rose-100 space-y-1.5 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-xs font-bold text-rose-950 flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-rose-600" />
-                        <span>5. Nút "Vi phạm"</span>
+                        <BookOpen className="w-4 h-4 text-rose-600" />
+                        <span>5. Nút "Thư viện"</span>
                       </label>
                       {violationReportLinkInput.trim() && (
                         <button
@@ -1105,14 +1105,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       )}
                     </div>
                     <p className="text-[11px] text-slate-500 mb-2">
-                      File tổng hợp theo dõi vi phạm nội quy lao động và sự cố vận hành RTG.
+                      Kho tài liệu, quy định, theo dõi biên bản và văn bản vận hành của Tổ RTG.
                     </p>
                   </div>
                   <input
                     type="url"
                     value={violationReportLinkInput}
                     onChange={(e) => setViolationReportLinkInput(e.target.value)}
-                    placeholder="https://docs.google.com/spreadsheets/... (Theo dõi vi phạm)"
+                    placeholder="https://docs.google.com/spreadsheets/... (Kho thư viện tài liệu)"
                     className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-hidden transition-all"
                   />
                 </div>

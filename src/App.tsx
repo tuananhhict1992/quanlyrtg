@@ -45,6 +45,7 @@ import {
 } from './services/employeeFormatting';
 import { Navbar } from './components/Navbar';
 import { Sidebar, TabType } from './components/Sidebar';
+import { BottomNav } from './components/BottomNav';
 const DashboardView=lazy(()=>import('./components/DashboardView').then(m=>({default:m.DashboardView})));
 const HrManagementView=lazy(()=>import('./components/HrManagementView').then(m=>({default:m.HrManagementView})));
 const LibraryView=lazy(()=>import('./components/LibraryView').then(m=>({default:m.LibraryView})));
@@ -1839,6 +1840,31 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* Mobile Bottom Navigation Bar (iPhone / Android) */}
+      {currentUser && (
+        <BottomNav
+          activeTab={activeTab}
+          setActiveTab={(tab) => {
+            setActiveTab(tab);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          currentUser={currentUser}
+          onOpenMenu={() => setMobileMenuOpen(true)}
+          badgeCounts={{
+            leave: leaveRequests.filter((r) => r.status === 'PENDING').length,
+            violations: incidents.filter((i) => i.isRtgRelated && !i.isSyncedToProfile).length,
+            chat: zaloMessages.filter(
+              (m) =>
+                m.status !== 'SCHEDULED' &&
+                (!m.readByIds || !m.readByIds.includes(currentUser.id)) &&
+                (m.recipientType === 'ALL' ||
+                  (m.recipientType === 'DEPARTMENT' && m.department === currentUser.department) ||
+                  (m.recipientType === 'INDIVIDUAL' && m.recipientIds?.includes(currentUser.id)))
+            ).length,
+          }}
+        />
+      )}
 
       {internalDraft && <InternalNotificationComposer draft={internalDraft} onClose={() => setInternalDraft(null)} onComplete={message => {setZaloMessages(prev => [message,...prev.filter(m => m.id !== message.id)]);addToast('success','Đã gửi thông báo vào hộp thư nội bộ.');}} />}
 

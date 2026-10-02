@@ -161,6 +161,41 @@ googleRouter.post(
   }),
 );
 googleRouter.post(
+  "/jobs/cleanup-unconfirmed",
+  asyncRoute(async (req, res) => {
+    assertPermission(req.user, "MANAGE_PERMISSIONS");
+    const result = await transaction(async (db) => {
+      const unconfirmed = await db.query(
+        "select q.job_id from private.sync_queue q left join private.temporary_files t on t.job_id=q.job_id where q.kind='drive' and q.status<>'success' and (t.job_id is null or t.business_saved_at is null)",
+      );
+      const jobIds = unconfirmed.rows.map((r: any) => r.job_id);
+      if (jobIds.length) {
+        await db.query(
+          "update private.sync_queue set status='success', updated_at=now() where job_id = any($1)",
+          [jobIds],
+        );
+        await audit(db, req.user.id, "google.sync.cleanup", undefined, undefined, { count: jobIds.length });
+      }
+      return { cleanedCount: jobIds.length };
+    });
+    res.json(result);
+  }),
+);
+googleRouter.delete(
+  "/jobs/:id",
+  asyncRoute(async (req, res) => {
+    assertPermission(req.user, "MANAGE_PERMISSIONS");
+    await transaction(async (db) => {
+      await db.query(
+        "update private.sync_queue set status='success', updated_at=now() where job_id=$1",
+        [req.params.id],
+      );
+      await audit(db, req.user.id, "google.sync.delete_job", undefined, req.params.id);
+    });
+    res.json({ success: true });
+  }),
+);
+googleRouter.post(
   "/sync",
   asyncRoute(async (req, res) => {
     const modules = req.body.module

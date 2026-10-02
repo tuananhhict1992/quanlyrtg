@@ -22,6 +22,74 @@ export async function discardIncidentDrafts(user:any,ids:unknown) {
   });
 }
 
+export async function deletePublishedIncident(user: any, incidentId: string) {
+  assertPermission(user, 'MANAGE_VIOLATIONS');
+  if (!incidentId || typeof incidentId !== 'string') throw new HttpError(400, 'Mã vụ việc không hợp lệ.');
+  return transaction(async (db) => {
+    await db.query('select pg_advisory_xact_lock(726451)');
+    const row = (
+      await db.query(
+        "select id,data from private.records where module='incidents' and id=$1 for update",
+        [incidentId],
+      )
+    ).rows[0];
+    if (!row) throw new HttpError(404, 'Không tìm thấy vụ việc.');
+    const incident = row.data;
+    const writer = {
+      ...user,
+      assignedPermissions: [...(user.assignedPermissions || []), 'MANAGE_HR'],
+    };
+
+    let updatedEmployee: any = null;
+    if (incident.matchedEmployeeId) {
+      await db.query('select pg_advisory_xact_lock(hashtextextended($1,0))', [
+        'employees:' + incident.matchedEmployeeId,
+      ]);
+      const empRow = (
+        await db.query(
+          "select id,data from private.records where module='employees' and id=$1 for update",
+          [incident.matchedEmployeeId],
+        )
+      ).rows[0];
+      if (empRow) {
+        const employee = empRow.data;
+        const oldRecords = employee.violationRecords || [];
+        const points =
+          Number(incident.pointsDeducted) ||
+          (incident.severity === 'NGHIEM_TRONG' ? 15 : incident.severity === 'TRUNG_BINH' ? 10 : 5);
+        const newRecords = oldRecords.filter(
+          (vr: any) =>
+            vr.incidentId !== incident.id &&
+            vr.id !== 'vr-' + incident.importChecksum &&
+            !(vr.incidentCode === incident.code && vr.time === incident.time),
+        );
+        const newCount = Math.max(0, Number(employee.violationCount || oldRecords.length) - 1);
+        const restoredScore = Math.min(100, Number(employee.competencyScore ?? 100) + points);
+
+        updatedEmployee = await writeRecord(db, writer, 'employees', employee.id, {
+          violationRecords: newRecords,
+          violationCount: newCount,
+          competencyScore: restoredScore,
+        });
+      }
+    }
+
+    await db.query("delete from private.records where module='incidents' and id=$1", [incidentId]);
+    await audit(db, user.id, 'incidents.delete_published', 'incidents', incidentId, {
+      code: incident.code,
+      matchedEmployeeId: incident.matchedEmployeeId,
+    });
+    await enqueue(db, 'incidents', incidentId, { id: incidentId, deleted: true }, user.id);
+    await db.query("insert into public.record_changes(module) values('incidents'),('employees')");
+
+    return {
+      success: true,
+      deletedIncidentId: incidentId,
+      updatedEmployee,
+    };
+  });
+}
+
 // Confirmation owns the complete transaction: published case, personnel history and archive readiness.
 export async function confirmIncidents(user: any, input: any, sourceJobId?: string) {
   assertPermission(user, 'MANAGE_VIOLATIONS');

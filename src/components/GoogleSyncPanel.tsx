@@ -69,7 +69,7 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
       aria-label="Đồng bộ Google"
     >
       <h3 className="font-bold text-lg">Đồng bộ Google · Lưu trữ & báo cáo</h3>
-      {summary && <SyncQueueNotice summary={summary} />}
+      {summary && <SyncQueueNotice summary={summary} onCleaned={load} />}
       <p className="rounded-lg bg-blue-50 text-blue-800 p-3 text-sm" role="status">
         {automation?.enabled
           ? 'Đồng bộ tự động mỗi phút, kể cả khi đóng app. Chỉ hiển thị tác vụ đang chờ, đang chạy hoặc cần xử lý lỗi.'
@@ -302,21 +302,36 @@ export function GoogleSyncPanel({ currentUser }: { currentUser: Employee }) {
               {j.status === 'failed' && j.next_attempt_at && (
                 <p className="text-xs text-amber-700 mt-2">Tự thử lại lúc {formatDate(j.next_attempt_at, true)}.</p>
               )}
-              {j.status === "failed" && (
-                <button
-                  disabled={busy}
-                  className="mt-2 border rounded-lg px-3 py-1"
-                  onClick={() =>
-                    void act(async () => {
-                      await api("/google/jobs/" + j.job_id + "/retry", {
-                        method: "POST",
-                      });
-                    }, "Đã xếp hàng thử lại. Máy chủ sẽ tự động xử lý.")
-                  }
-                >
-                  Thử đồng bộ lại
-                </button>
-              )}
+              <div className="flex items-center gap-2 mt-2">
+                {j.status === "failed" && (
+                  <button
+                    disabled={busy}
+                    className="border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg px-3 py-1 text-xs font-semibold cursor-pointer"
+                    onClick={() =>
+                      void act(async () => {
+                        await api("/google/jobs/" + j.job_id + "/retry", {
+                          method: "POST",
+                        });
+                      }, "Đã xếp hàng thử lại. Máy chủ sẽ tự động xử lý.")
+                    }
+                  >
+                    Thử đồng bộ lại
+                  </button>
+                )}
+                {(j.stage === 'waiting_confirmation' || j.status === 'failed') && (
+                  <button
+                    disabled={busy}
+                    className="border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg px-2.5 py-1 text-xs cursor-pointer"
+                    onClick={() => {
+                      void act(async () => {
+                        await api("/google/jobs/" + j.job_id, { method: "DELETE" });
+                      }, "Đã xóa tác vụ khỏi hàng đợi.");
+                    }}
+                  >
+                    Xóa tác vụ này
+                  </button>
+                )}
+              </div>
             </article>
           ))}
         </div>

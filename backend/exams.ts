@@ -145,6 +145,7 @@ examsRouter.post(
           department: req.user.department,
           answers,
           ...gradeExam(quiz, answers),
+          questions: quiz.questions,
           submittedAt: new Date().toISOString(),
         };
       await db.query(

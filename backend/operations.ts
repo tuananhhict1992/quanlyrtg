@@ -9,7 +9,7 @@ import { parseSpreadsheet } from './spreadsheet-import';
 import { validModule, MODULE_PERMISSIONS } from "./security";
 import { generateBxxlHtml } from "../src/services/bxxlTemplate";
 import { finalizeRanking } from './rankings';
-import { confirmIncidents, discardIncidentDrafts } from './incidents';
+import { confirmIncidents, discardIncidentDrafts, deletePublishedIncident } from './incidents';
 import { importQuestionBank } from './question-bank';
 import { isTabAllowed } from '../src/utils/permissionUtils';
 export const operationsRouter = Router();
@@ -41,6 +41,9 @@ operationsRouter.post('/incidents/confirm',asyncRoute(async(req,res)=>{
 }));
 operationsRouter.post('/incidents/discard',asyncRoute(async(req,res)=>{
   res.json(await discardIncidentDrafts(req.user,req.body.ids));
+}));
+operationsRouter.delete('/incidents/:id',asyncRoute(async(req,res)=>{
+  res.json(await deletePublishedIncident(req.user,req.params.id));
 }));
 operationsRouter.post('/ranking/finalize',asyncRoute(async(req,res)=>{
   res.json(await finalizeRanking(req.user,req.body.record,req.body.employeeIds));
