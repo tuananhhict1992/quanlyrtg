@@ -23,15 +23,32 @@ export const supabase = createClient(
 const collectionRead = createRequestQueue(3);
 const observeChanges = createRealtimeHub(supabase);
 const withApiBackoff = createApiBackoff(() => window.dispatchEvent(new CustomEvent('rtg:info', {detail:'Đang tạm giãn tải dữ liệu. Hệ thống sẽ tự cập nhật lại; bạn không cần đăng nhập lại.'})));
+
+export function getApiBaseUrl(): string {
+  try {
+    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('rtg_server_url') : null;
+    if (stored) return stored.trim().replace(/\/$/, '');
+  } catch {}
+  const envUrl = (import.meta as any)?.env?.VITE_API_URL;
+  if (envUrl) return String(envUrl).trim().replace(/\/$/, '');
+  return '';
+}
+
 export async function apiFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
 ) {
+  const baseUrl = getApiBaseUrl();
+  let rawUrl = input instanceof Request ? input.url : String(input);
+  if (baseUrl && rawUrl.startsWith('/api/')) {
+    rawUrl = `${baseUrl}${rawUrl}`;
+  }
   const target = new URL(
-    input instanceof Request ? input.url : String(input),
-    location.origin,
+    rawUrl,
+    baseUrl ? new URL(baseUrl).origin : location.origin,
   );
-  if (target.origin !== location.origin || !target.pathname.startsWith("/api/"))
+  const isAllowedOrigin = target.origin === location.origin || (Boolean(baseUrl) && target.origin === new URL(baseUrl).origin);
+  if (!isAllowedOrigin || !target.pathname.startsWith("/api/"))
     throw new Error("Chỉ gửi phiên xác thực đến API của ứng dụng.");
   const read = (init.method || (input instanceof Request ? input.method : 'GET')).toUpperCase() === 'GET';
   const res = await withApiBackoff(async () => {
@@ -40,7 +57,7 @@ export async function apiFetch(
     if (session) headers.set('Authorization', `Bearer ${session.access_token}`);
     const timeout = read ? AbortSignal.timeout(20000) : undefined;
     const signal = init.signal && timeout ? AbortSignal.any([init.signal, timeout]) : init.signal || timeout;
-    return fetch(input, { ...init, headers, signal });
+    return fetch(rawUrl, { ...init, headers, signal });
   }, read, init.signal || undefined);
   if (res.status === 401) {
     await supabase.auth.signOut();
@@ -74,7 +91,9 @@ export async function loginWithUsername(username: string, password: string, sign
     throw new Error(
       "Chưa cấu hình Supabase. Xem hướng dẫn triển khai trong README.",
     );
-  const response = await fetch('/api/auth/login', {
+  const baseUrl = getApiBaseUrl();
+  const loginUrl = baseUrl ? `${baseUrl}/api/auth/login` : '/api/auth/login';
+  const response = await fetch(loginUrl, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }), cache: 'no-store', signal,
   });

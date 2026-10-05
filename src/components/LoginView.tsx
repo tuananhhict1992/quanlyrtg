@@ -12,6 +12,8 @@ import {
   Lock,
   ShieldCheck,
   ExternalLink,
+  Smartphone,
+  Download,
 } from "lucide-react";
 import { canUserLogin } from "../utils/permissionUtils";
 
@@ -36,6 +38,17 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const loginRequest = useRef<AbortController | null>(null);
   const [credentialWaiting, setCredentialWaiting] = useState(false);
   const [waitSeconds, setWaitSeconds] = useState(0);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
   useEffect(() => () => loginRequest.current?.abort(), []);
   useEffect(() => {
     if (!credentialWaiting) return;
@@ -272,6 +285,32 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <span>Mở trong Tab mới (Chế độ xem trước Google AI Studio)</span>
             </button>
           )}
+          {deferredPrompt && (
+            <button
+              type="button"
+              onClick={async () => {
+                if (deferredPrompt) {
+                  deferredPrompt.prompt();
+                  const choice = await deferredPrompt.userChoice;
+                  if (choice.outcome === 'accepted') setDeferredPrompt(null);
+                }
+              }}
+              className="mt-2.5 w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-semibold transition-colors shadow-2xs"
+            >
+              <Smartphone size={13} className="text-indigo-600 shrink-0" />
+              <span>Cài đặt ứng dụng vào điện thoại (PWA)</span>
+            </button>
+          )}
+          <a
+            href="https://github.com/tuananhhict1992/quanlyrtg/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2.5 w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold transition-colors shadow-2xs"
+            title="Tải tệp cài đặt APK cho điện thoại Android từ GitHub Releases"
+          >
+            <Download size={13} className="text-emerald-600 shrink-0" />
+            <span>Tải ứng dụng Android (.APK)</span>
+          </a>
           <p className="mt-7 flex items-start gap-2 text-[11px] text-slate-400 leading-relaxed">
             <Lock size={14} className="shrink-0 mt-0.5" />
             <span>

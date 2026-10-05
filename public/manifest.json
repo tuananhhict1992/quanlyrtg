@@ -1,0 +1,25 @@
+{
+  "name": "Hệ Thống Quản Lý Tổ RTG - Cảng HICT",
+  "short_name": "Quản Lý RTG",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#006eae",
+  "orientation": "portrait",
+  "description": "Hệ thống quản lý thông tin nhân sự, sự cố, bình xét xếp loại và kiểm tra trắc nghiệm Tổ RTG - Cảng Quốc Tế HICT",
+  "icons": [
+    {
+      "src": "/brand/hict-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/hict-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

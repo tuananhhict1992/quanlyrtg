@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Quản Lý RTG - Cảng HICT</string>
+    <string name="title_activity_main">Quản Lý RTG - Cảng HICT</string>
+    <string name="package_name">com.hict.quanlyrtg</string>
+    <string name="custom_url_scheme">com.hict.quanlyrtg</string>
+</resources>
