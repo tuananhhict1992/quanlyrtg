@@ -1,5 +1,5 @@
-import {parseWorkbook} from '../services/excelProcessing';
-import React, { useState, useRef } from 'react';
+import { parseWorkbook } from '../services/excelProcessing';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   FileSpreadsheet,
   Upload,
@@ -12,6 +12,11 @@ import {
   ArrowRight,
   Boxes,
   HelpCircle,
+  Eye,
+  X,
+  Search,
+  Layers,
+  Filter,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -20,6 +25,19 @@ export interface YardBlockRow {
   countA: number | '';
   blockB: string;
   countB: number | '';
+}
+
+export interface ContainerItemDetail {
+  id: string;
+  containerNo: string;
+  block: string;
+  location: string;
+  sizeType: string;
+  fe: string; // Full/Empty
+  grossWeight: string;
+  operator: string;
+  loadlistFlag: string;
+  rowIdx: number;
 }
 
 export interface YardProcessResult {
@@ -33,6 +51,7 @@ export interface YardProcessResult {
   totalA: number;
   totalB: number;
   totalYard: number;
+  containersByBlock: Record<string, ContainerItemDetail[]>;
 }
 
 /**
@@ -67,56 +86,90 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
   const [copied, setCopied] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Modal xem chi tiết từng Block
+  const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
+  const [modalSearch, setModalSearch] = useState<string>('');
+  const [copiedModalList, setCopiedModalList] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /**
-   * Quy trình xử lý dữ liệu ngầm theo Quy tắc tối cao:
+   * Quy trình xử lý dữ liệu ngầm theo Quy tắc:
    * 1. Xác định Cột S (BLOCK) và Cột AD (NOTIN_LOADLIST_FLG).
-   * 2. Loại bỏ các dòng có Cột S để trống. LOẠI BỎ HOÀN TOÀN các dòng có chứa chữ 'Y' hoặc 'y' ở Cột AD.
-   * 3. Tự động chuẩn hóa tên Block ở Cột S về chuẩn 2 chữ số (ví dụ: 'A1' -> 'A01', 'B2' -> 'B02').
-   * 4. Đếm tổng số lượng container hợp lệ cho từng Block. Phân thành LINE A (bắt đầu bằng 'A') và LINE B (bắt đầu bằng 'B').
-   * 
-   * Định dạng đầu ra yêu cầu:
-   * Chỉ in ra MỘT BẢNG DUY NHẤT gồm 4 cột song song theo đúng mẫu:
-   * | KHU VỰC LINE A | Số lượng (A) | KHU VỰC LINE B | Số lượng (B) |
-   * • Sắp xếp tên Block theo thứ tự tăng dần từ nhỏ đến lớn.
-   * • Dưới cùng của bảng, chốt 2 dòng tổng kết:
-   *   ◦ TỔNG LINE A | [Số] | TỔNG LINE B | [Số]
-   *   ◦ TỔNG CỘNG ĐANG LƯU BÃI | [Tổng A+B] Cont
+   * 2. Nhận diện các cột thông tin bổ trợ: Số Cont, Vị trí bãi, Kích cỡ, FE, Hãng tàu, Trọng lượng.
+   * 3. Loại bỏ các dòng có Cột S để trống. LOẠI BỎ HOÀN TOÀN các dòng có chứa chữ 'Y' hoặc 'y' ở Cột AD.
+   * 4. Tự động chuẩn hóa tên Block ở Cột S về chuẩn 2 chữ số (ví dụ: 'A1' -> 'A01', 'B2' -> 'B02').
+   * 5. Lưu trữ danh sách container chi tiết theo từng Block để tra cứu khi nhấn vào Block.
    */
   const processExcelData = (rawRows: any[][], fileName: string) => {
     if (!rawRows || rawRows.length === 0) {
       throw new Error('Tệp Excel không có dữ liệu để xử lý.');
     }
 
-    // 1. Xác định Cột S (index 18) và Cột AD (index 29)
-    // Đồng thời kiểm tra nếu hàng đầu tiên có chứa tiêu đề để linh hoạt
     let colSIdx = 18; // Cột S (BLOCK)
     let colADIdx = 29; // Cột AD (NOTIN_LOADLIST_FLG)
+    let colCntrIdx = 1; // Số Container (mặc định cột B hoặc tìm theo tên)
+    let colLocIdx = 19; // Vị trí bãi chi tiết (Bay-Row-Tier)
+    let colSizeIdx = 4; // Kích cỡ / SZTP
+    let colFEIdx = 5; // FE (Hàng/Rỗng)
+    let colWeightIdx = 8; // Trọng lượng
+    let colOprIdx = 2; // Hãng tàu
     let startRow = 0;
 
-    // Quét 3 hàng đầu tiên xem có hàng tiêu đề hay không
-    for (let r = 0; r < Math.min(5, rawRows.length); r++) {
+    // Quét 5 hàng đầu tiên xem có hàng tiêu đề để ánh xạ cột chính xác
+    for (let r = 0; r < Math.min(6, rawRows.length); r++) {
       const row = rawRows[r] || [];
       const sVal = String(row[colSIdx] || '').trim().toUpperCase();
       const adVal = String(row[colADIdx] || '').trim().toUpperCase();
 
-      // Kiểm tra tiêu đề
-      if (sVal === 'BLOCK' || adVal.includes('NOTIN_LOADLIST') || adVal.includes('NOTIN')) {
-        startRow = r + 1;
-        break;
-      }
-
-      // Quét tìm cột nếu vị trí lệch
       const foundS = row.findIndex((c) => String(c).trim().toUpperCase() === 'BLOCK');
       const foundAD = row.findIndex(
         (c) =>
           String(c).trim().toUpperCase().includes('NOTIN_LOADLIST') ||
           String(c).trim().toUpperCase() === 'NOTIN_LOADLIST_FLG'
       );
+
       if (foundS !== -1) colSIdx = foundS;
       if (foundAD !== -1) colADIdx = foundAD;
-      if (foundS !== -1 || foundAD !== -1) {
+
+      // Tìm các cột bổ trợ
+      const foundCntr = row.findIndex((c) => {
+        const str = String(c).trim().toUpperCase();
+        return str === 'CONTAINER' || str === 'CNTR_NO' || str === 'CONTAINER_NO' || str === 'CNTR' || str === 'CONT';
+      });
+      if (foundCntr !== -1) colCntrIdx = foundCntr;
+
+      const foundLoc = row.findIndex((c) => {
+        const str = String(c).trim().toUpperCase();
+        return str === 'LOCATION' || str === 'YARD_LOC' || str === 'BAY_ROW_TIER' || str === 'POSITION' || str === 'VỊ TRÍ';
+      });
+      if (foundLoc !== -1) colLocIdx = foundLoc;
+
+      const foundSize = row.findIndex((c) => {
+        const str = String(c).trim().toUpperCase();
+        return str === 'SZTP' || str === 'SIZE' || str === 'TYPE' || str === 'ISO' || str === 'KÍCH CỠ';
+      });
+      if (foundSize !== -1) colSizeIdx = foundSize;
+
+      const foundFE = row.findIndex((c) => {
+        const str = String(c).trim().toUpperCase();
+        return str === 'FE' || str === 'F/E' || str === 'STATUS' || str === 'FULL_EMPTY' || str === 'TRẠNG THÁI';
+      });
+      if (foundFE !== -1) colFEIdx = foundFE;
+
+      const foundOpr = row.findIndex((c) => {
+        const str = String(c).trim().toUpperCase();
+        return str === 'OPR' || str === 'OPERATOR' || str === 'LINE' || str === 'HÃNG TÀU';
+      });
+      if (foundOpr !== -1) colOprIdx = foundOpr;
+
+      const foundWt = row.findIndex((c) => {
+        const str = String(c).trim().toUpperCase();
+        return str === 'GROSS_WT' || str === 'GW' || str === 'WEIGHT' || str === 'TRỌNG LƯỢNG';
+      });
+      if (foundWt !== -1) colWeightIdx = foundWt;
+
+      if (foundS !== -1 || foundAD !== -1 || sVal === 'BLOCK' || adVal.includes('NOTIN')) {
         startRow = r + 1;
         break;
       }
@@ -128,6 +181,7 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
 
     const mapA = new Map<string, number>();
     const mapB = new Map<string, number>();
+    const containersByBlock: Record<string, ContainerItemDetail[]> = {};
 
     for (let i = startRow; i < rawRows.length; i++) {
       const row = rawRows[i];
@@ -152,6 +206,32 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
       // 3. Tự động chuẩn hóa tên Block ở Cột S về chuẩn 2 chữ số (ví dụ: 'A1' -> 'A01', 'B2' -> 'B02')
       const normalizedBlock = normalizeBlockName(rawBlockStr);
 
+      // Trích xuất chi tiết container
+      const cntrNo = String(row[colCntrIdx] ?? '').trim() || `CONT-${i + 1}`;
+      const location = String(row[colLocIdx] ?? '').trim();
+      const sizeType = String(row[colSizeIdx] ?? '').trim();
+      const fe = String(row[colFEIdx] ?? '').trim();
+      const grossWeight = String(row[colWeightIdx] ?? '').trim();
+      const operator = String(row[colOprIdx] ?? '').trim();
+
+      const itemDetail: ContainerItemDetail = {
+        id: `cntr-${i}-${normalizedBlock}`,
+        containerNo: cntrNo,
+        block: normalizedBlock,
+        location: location || `${normalizedBlock}`,
+        sizeType: sizeType || '40HC',
+        fe: fe || 'F',
+        grossWeight: grossWeight || '',
+        operator: operator || '',
+        loadlistFlag: rawADVal || 'N',
+        rowIdx: i + 1,
+      };
+
+      if (!containersByBlock[normalizedBlock]) {
+        containersByBlock[normalizedBlock] = [];
+      }
+      containersByBlock[normalizedBlock].push(itemDetail);
+
       // 4. Đếm tổng số lượng container hợp lệ cho từng Block. Phân thành LINE A và LINE B
       if (normalizedBlock.startsWith('A')) {
         mapA.set(normalizedBlock, (mapA.get(normalizedBlock) || 0) + 1);
@@ -160,7 +240,6 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
         mapB.set(normalizedBlock, (mapB.get(normalizedBlock) || 0) + 1);
         totalValid++;
       } else {
-        // Trường hợp khác nếu có (vẫn tính vào LINE tương ứng nếu có)
         totalValid++;
       }
     }
@@ -198,7 +277,7 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
 
     const compiled: YardProcessResult = {
       fileName,
-      processedAt: new Date().toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}),
+      processedAt: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
       totalRowsRaw: rawRows.length - startRow,
       totalValidContainers: totalValid,
       totalIgnoredEmptyBlock: ignoredEmpty,
@@ -207,6 +286,7 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
       totalA: sumA,
       totalB: sumB,
       totalYard: sumA + sumB,
+      containersByBlock,
     };
 
     setResult(compiled);
@@ -219,34 +299,35 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
     setIsProcessing(true);
     setErrorMessage(null);
     setResult(null);
+    setSelectedBlock(null);
+    try {
+      let workbook: XLSX.WorkBook;
       try {
-        let workbook: XLSX.WorkBook;
-        try {
-          workbook = await parseWorkbook(file, 'shipProductivity');
-        } catch (serverErr: any) {
-          if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')) {
-            const buffer = await file.arrayBuffer();
-            workbook = XLSX.read(buffer, { type: 'array', cellFormula: false, cellHTML: false });
-          } else {
-            throw serverErr;
-          }
+        workbook = await parseWorkbook(file, 'shipProductivity');
+      } catch (serverErr: any) {
+        if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')) {
+          const buffer = await file.arrayBuffer();
+          workbook = XLSX.read(buffer, { type: 'array', cellFormula: false, cellHTML: false });
+        } else {
+          throw serverErr;
         }
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, {
-          header: 1,
-          defval: '',
-        });
-
-        processExcelData(rows, file.name);
-      } catch (err: any) {
-        console.error('Lỗi phân tích file Excel:', err);
-        setErrorMessage(
-          err.message || 'Không thể đọc tệp Excel. Vui lòng đảm bảo tệp đúng định dạng .xlsx, .xls hoặc .csv.'
-        );
-      } finally {
-        setIsProcessing(false);
       }
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        defval: '',
+      });
+
+      processExcelData(rows, file.name);
+    } catch (err: any) {
+      console.error('Lỗi phân tích file Excel:', err);
+      setErrorMessage(
+        err.message || 'Không thể đọc tệp Excel. Vui lòng đảm bảo tệp đúng định dạng .xlsx, .xls hoặc .csv.'
+      );
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -262,42 +343,58 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
    */
   const handleLoadDemoData = () => {
     setIsProcessing(true);
+    setSelectedBlock(null);
     setTimeout(() => {
-      // Giả lập 100 dòng mẫu với các block A1..A10, B1..B12 và một số dòng chứa 'Y' ở Cột AD
       const demoRows: any[][] = [];
-      // Hàng tiêu đề (đủ 30 cột tới AD)
       const headerRow = new Array(30).fill('');
+      headerRow[1] = 'CNTR_NO';
+      headerRow[2] = 'OPR';
+      headerRow[4] = 'SZTP';
+      headerRow[5] = 'FE';
+      headerRow[8] = 'GROSS_WT';
       headerRow[18] = 'BLOCK';
+      headerRow[19] = 'LOCATION';
       headerRow[29] = 'NOTIN_LOADLIST_FLG';
       demoRows.push(headerRow);
 
-      const blockPool = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10', 'B11', 'B12'];
+      const blockPool = ['A00', 'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'B00', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10', 'B11', 'B12'];
+      const oprPool = ['ONE', 'MSC', 'CMA-CGM', 'MAERSK', 'COSCO', 'EVERGREEN', 'HAPAG-LLOYD'];
+      const sztpPool = ['20GP', '40HC', '40GP', '45HC', '20RF', '40RF'];
 
-      for (let i = 0; i < 280; i++) {
+      for (let i = 0; i < 300; i++) {
         const row = new Array(30).fill('');
         const chosenBlock = blockPool[Math.floor(Math.random() * blockPool.length)];
-        row[18] = chosenBlock; // Cột S (BLOCK)
+        const normalized = normalizeBlockName(chosenBlock);
+        const bay = Math.floor(Math.random() * 20) + 1;
+        const rowNum = Math.floor(Math.random() * 6) + 1;
+        const tier = Math.floor(Math.random() * 5) + 1;
 
-        // 10% dòng có NOTIN_LOADLIST_FLG = 'Y'
-        if (i % 8 === 0) {
+        row[1] = `TCKU${Math.floor(1000000 + Math.random() * 9000000)}`;
+        row[2] = oprPool[Math.floor(Math.random() * oprPool.length)];
+        row[4] = sztpPool[Math.floor(Math.random() * sztpPool.length)];
+        row[5] = Math.random() > 0.3 ? 'F' : 'E';
+        row[8] = `${(Math.random() * 28 + 2).toFixed(1)}T`;
+        row[18] = chosenBlock;
+        row[19] = `${normalized}-${bay < 10 ? '0' + bay : bay}-${rowNum < 10 ? '0' + rowNum : rowNum}-${tier}`;
+
+        if (i % 9 === 0) {
           row[29] = 'Y';
-        } else if (i % 25 === 0) {
+        } else if (i % 30 === 0) {
           row[29] = 'y';
         } else {
           row[29] = 'N';
         }
 
-        // Một số dòng để trống Cột S
-        if (i % 45 === 0) {
+        if (i % 50 === 0) {
           row[18] = '';
         }
 
         demoRows.push(row);
       }
 
-      processExcelData(demoRows, 'DATA_TON_BAI_CONTAINER_DEMO.xlsx');
+      processExcelData(demoRows, 'DATA_TON_BAI_CONTAINER_TC_HICT.xlsx');
       setIsProcessing(false);
-    }, 300);
+    }, 250);
   };
 
   /**
@@ -341,13 +438,11 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
       ]);
     });
 
-    // 2 dòng chốt
     data.push(['TỔNG LINE A', result.totalA, 'TỔNG LINE B', result.totalB]);
     data.push(['TỔNG CỘNG ĐANG LƯU BÃI', `${result.totalYard} Cont`, '', '']);
 
     const ws = XLSX.utils.aoa_to_sheet(data);
 
-    // Căn chỉnh độ rộng cột
     ws['!cols'] = [
       { wch: 18 },
       { wch: 15 },
@@ -364,15 +459,74 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
     window.print();
   };
 
-  /**
-   * Xóa sạch kết quả tra cứu và giải phóng bộ nhớ ngay lập tức
-   */
   const handleClearResult = () => {
     setResult(null);
     setErrorMessage(null);
+    setSelectedBlock(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  // Lọc danh sách container thuộc block đang chọn trong Modal
+  const blockContainers = useMemo(() => {
+    if (!result || !selectedBlock) return [];
+    const list = result.containersByBlock[selectedBlock] || [];
+    if (!modalSearch.trim()) return list;
+    const q = modalSearch.trim().toLowerCase();
+    return list.filter(
+      (c) =>
+        c.containerNo.toLowerCase().includes(q) ||
+        c.location.toLowerCase().includes(q) ||
+        c.operator.toLowerCase().includes(q) ||
+        c.sizeType.toLowerCase().includes(q)
+    );
+  }, [result, selectedBlock, modalSearch]);
+
+  const handleCopyModalList = () => {
+    if (!selectedBlock || !blockContainers.length) return;
+    let txt = `DANH SÁCH CONTAINER LƯU BÃI - BLOCK ${selectedBlock} (${blockContainers.length} Cont)\n`;
+    txt += `STT\tSố Container\tVị trí bãi\tKích cỡ\tF/E\tHãng tàu\tTrọng lượng\n`;
+    blockContainers.forEach((c, idx) => {
+      txt += `${idx + 1}\t${c.containerNo}\t${c.location}\t${c.sizeType}\t${c.fe}\t${c.operator}\t${c.grossWeight}\n`;
+    });
+    navigator.clipboard.writeText(txt).then(() => {
+      setCopiedModalList(true);
+      setTimeout(() => setCopiedModalList(false), 2000);
+    });
+  };
+
+  const handleExportBlockExcel = () => {
+    if (!selectedBlock || !blockContainers.length) return;
+    const data: any[][] = [
+      ['STT', 'Số Container', 'Vị trí bãi', 'Kích cỡ (SZTP)', 'F/E', 'Hãng tàu', 'Trọng lượng', 'Dòng Excel gốc'],
+    ];
+    blockContainers.forEach((c, idx) => {
+      data.push([
+        idx + 1,
+        c.containerNo,
+        c.location,
+        c.sizeType,
+        c.fe,
+        c.operator,
+        c.grossWeight,
+        c.rowIdx,
+      ]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [
+      { wch: 8 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 15 },
+      { wch: 8 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `BLOCK_${selectedBlock}`);
+    XLSX.writeFile(wb, `CONTAINER_BLOCK_${selectedBlock}_${Date.now()}.xlsx`);
   };
 
   return (
@@ -394,7 +548,7 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Kéo thả file Excel để xem bảng thống kê LINE A / LINE B. Kết quả chỉ hiển thị trong lần xem hiện tại.
+                Kéo thả file Excel để xem bảng thống kê LINE A / LINE B. Nhấp vào bất kỳ Block nào (A00, B00, A01, B02...) để tra cứu chi tiết danh sách container.
               </p>
             </div>
           </div>
@@ -461,54 +615,77 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
             )}
           </div>
 
-          <div className="max-w-md">
-            <p className="text-base sm:text-lg font-extrabold text-slate-900">
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-slate-800">
               {isProcessing
-                ? 'Đang phân tích và xử lý ngầm dữ liệu...'
-                : 'Kéo & thả file Excel vào đây để tra cứu thống kê'}
-            </p>
-            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-              Nhấp vào vùng này hoặc kéo tệp <b>.xlsx, .xls, .csv</b> vào để hệ thống tự động lọc Cột S và Cột AD, kết xuất bảng 4 cột LINE A / LINE B tức thì.
+                ? 'Đang đọc và tự động tổng hợp dữ liệu bãi container...'
+                : 'Kéo thả tệp Excel báo cáo bãi vào đây hoặc nhấp để chọn tệp'}
+            </h3>
+            <p className="text-xs text-slate-500 mt-1.5 max-w-lg mx-auto">
+              Hỗ trợ định dạng <b>.xlsx, .xls, .csv</b>. Tự động nhận diện Cột S (Block) và Cột AD (NOTIN_LOADLIST_FLG = 'Y').
             </p>
           </div>
 
-          {!isProcessing && (
-            <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-sm shadow-blue-200">
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Chọn file Excel từ máy tính</span>
+          <div className="flex items-center gap-3 mt-2 flex-wrap justify-center">
+            <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">
+              Khớp chuẩn Line A / Line B
+            </span>
+            <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">
+              Chuẩn hóa 2 chữ số (A01..A99)
+            </span>
+            <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">
+              Nút ấn xem chi tiết từng Block
+            </span>
+          </div>
+
+          {!result && (
+            <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-3">
+              <span className="text-xs text-slate-400">Chưa có tệp Excel?</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleLoadDemoData();
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition-all shadow-2xs"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>Nạp dữ liệu mẫu Cảng TC-HICT để thử nghiệm</span>
+              </button>
             </div>
           )}
-
-          {/* Privacy & Security Guarantee */}
-          <div className="mt-2 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Chỉ xem thống kê — không lưu file hoặc kết quả lên hệ thống, Google Drive hay Sheets.</span>
-          </div>
         </div>
       </div>
 
-      {/* Error Message */}
+      {/* Error Alert */}
       {errorMessage && (
-        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-3">
-          <span className="font-bold">Lỗi:</span>
-          <span>{errorMessage}</span>
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-xs sm:text-sm text-rose-700 flex items-start gap-3">
+          <HelpCircle className="w-5 h-5 shrink-0 text-rose-500 mt-0.5" />
+          <div className="space-y-1">
+            <span className="font-bold">Lỗi xử lý tệp:</span>
+            <p className="leading-relaxed">{errorMessage}</p>
+          </div>
         </div>
       )}
 
-      {/* RESULT SECTION: MỘT BẢNG DUY NHẤT 4 CỘT */}
+      {/* BẢNG KẾT QUẢ THỐNG KÊ CONTAINER LƯU BÃI (LINE A - LINE B) */}
       {result && (
-        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden animate-fadeIn">
-          {/* Action & Info Bar */}
-          <div className="p-4 sm:p-5 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden animate-in fade-in duration-300">
+          {/* Header Action Bar */}
+          <div className="p-5 sm:p-6 bg-slate-50/90 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                <h3 className="font-bold text-slate-900 text-sm">
+                <Boxes className="w-5 h-5 text-blue-600" />
+                <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight uppercase">
                   KẾT QUẢ THỐNG KÊ CONTAINER LƯU BÃI (LINE A - LINE B)
-                </h3>
+                </h2>
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 Tệp: <b className="text-slate-700">{result.fileName}</b> • Xử lý lúc: {result.processedAt} • Hợp lệ: <b className="text-emerald-600">{result.totalValidContainers}</b> cont (Loại bỏ {result.totalIgnoredNotInLoadlist} cont Flag Y, {result.totalIgnoredEmptyBlock} dòng Block trống)
+              </p>
+              <p className="text-[11px] text-blue-600 font-semibold mt-1 flex items-center gap-1">
+                <Eye className="w-3.5 h-3.5" />
+                <span>Mẹo: Nhấp vào nút ô vị trí (A00, B00, A01, B02...) để xem bảng chi tiết từng container đã thống kê.</span>
               </p>
             </div>
 
@@ -587,16 +764,49 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
                       idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'
                     }`}
                   >
-                    <td className="border border-slate-300 px-4 py-2.5 text-center font-bold text-slate-800">
-                      {row.blockA || '-'}
+                    {/* CỘT KHU VỰC LINE A - NÚT ẤN TƯƠNG TÁC */}
+                    <td className="border border-slate-300 px-3 py-2 text-center">
+                      {row.blockA ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedBlock(row.blockA);
+                            setModalSearch('');
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg font-bold text-xs text-blue-700 bg-blue-50/90 hover:bg-blue-600 hover:text-white border border-blue-200 hover:border-blue-600 transition-all shadow-2xs hover:scale-105 active:scale-95 group cursor-pointer"
+                          title={`Nhấn vào để xem bảng vị trí chi tiết các cont tại Block ${row.blockA}`}
+                        >
+                          <span>{row.blockA}</span>
+                          <Eye className="w-3 h-3 text-blue-500 group-hover:text-white transition-colors" />
+                        </button>
+                      ) : (
+                        <span className="text-slate-400 font-normal">-</span>
+                      )}
                     </td>
-                    <td className="border border-slate-300 px-4 py-2.5 text-center font-semibold text-blue-700">
+                    <td className="border border-slate-300 px-4 py-2.5 text-center font-bold text-blue-700">
                       {row.countA !== '' ? row.countA : '-'}
                     </td>
-                    <td className="border border-slate-300 px-4 py-2.5 text-center font-bold text-slate-800">
-                      {row.blockB || '-'}
+
+                    {/* CỘT KHU VỰC LINE B - NÚT ẤN TƯƠNG TÁC */}
+                    <td className="border border-slate-300 px-3 py-2 text-center">
+                      {row.blockB ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedBlock(row.blockB);
+                            setModalSearch('');
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg font-bold text-xs text-emerald-700 bg-emerald-50/90 hover:bg-emerald-600 hover:text-white border border-emerald-200 hover:border-emerald-600 transition-all shadow-2xs hover:scale-105 active:scale-95 group cursor-pointer"
+                          title={`Nhấn vào để xem bảng vị trí chi tiết các cont tại Block ${row.blockB}`}
+                        >
+                          <span>{row.blockB}</span>
+                          <Eye className="w-3 h-3 text-emerald-500 group-hover:text-white transition-colors" />
+                        </button>
+                      ) : (
+                        <span className="text-slate-400 font-normal">-</span>
+                      )}
                     </td>
-                    <td className="border border-slate-300 px-4 py-2.5 text-center font-semibold text-emerald-700">
+                    <td className="border border-slate-300 px-4 py-2.5 text-center font-bold text-emerald-700">
                       {row.countB !== '' ? row.countB : '-'}
                     </td>
                   </tr>
@@ -639,9 +849,9 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
           </div>
 
           {/* Footer note */}
-          <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex items-center justify-between">
+          <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex items-center justify-between flex-wrap gap-2">
             <span>
-              Quy chuẩn tên Block: 2 chữ số tự động (A01..A99, B01..B99) • Bỏ qua hoàn toàn container có cờ NOTIN_LOADLIST_FLG = 'Y'
+              Quy chuẩn tên Block: 2 chữ số tự động (A00, A01..A99, B00, B01..B99) • Bỏ qua hoàn toàn container có cờ NOTIN_LOADLIST_FLG = 'Y'
             </span>
             <span className="font-mono text-slate-400">
               Cảng TC-HICT Yard Inventory Engine
@@ -649,8 +859,177 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
           </div>
         </div>
       )}
+
+      {/* MODAL CHI TIẾT DANH SÁCH CONTAINER CỦA BLOCK KHI NGƯỜI DÙNG BẤM VÀO Ô VỊ TRÍ */}
+      {selectedBlock && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-white text-base shadow-sm ${
+                    selectedBlock.startsWith('A') ? 'bg-blue-600' : 'bg-emerald-600'
+                  }`}
+                >
+                  {selectedBlock}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                      VỊ TRÍ CHI TIẾT CONTAINER - BLOCK {selectedBlock}
+                    </h3>
+                    <span
+                      className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
+                        selectedBlock.startsWith('A')
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-emerald-100 text-emerald-700'
+                      }`}
+                    >
+                      {selectedBlock.startsWith('A') ? 'LINE A' : 'LINE B'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Tổng số: <b className="text-slate-800">{result?.containersByBlock[selectedBlock]?.length || 0} container</b> đang lưu bãi tại Block này
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedBlock(null)}
+                className="w-9 h-9 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Search & Action Toolbar */}
+            <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-white">
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Tìm số cont, vị trí, hãng tàu..."
+                  value={modalSearch}
+                  onChange={(e) => setModalSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={handleCopyModalList}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs"
+                >
+                  {copiedModalList ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-emerald-600">Đã sao chép</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Sao chép</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportBlockExcel}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Xuất Excel Block</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Table Container */}
+            <div className="overflow-y-auto flex-1 p-4">
+              {blockContainers.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 text-xs">
+                  Không tìm thấy container nào phù hợp với từ khóa "{modalSearch}".
+                </div>
+              ) : (
+                <table className="w-full border-collapse border border-slate-200 text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                      <th className="border border-slate-200 px-3 py-2 text-center w-12">STT</th>
+                      <th className="border border-slate-200 px-3 py-2 text-left">Số Container</th>
+                      <th className="border border-slate-200 px-3 py-2 text-center">Vị trí bãi (Bay-Row-Tier)</th>
+                      <th className="border border-slate-200 px-3 py-2 text-center">Kích cỡ / ISO</th>
+                      <th className="border border-slate-200 px-3 py-2 text-center">F / E</th>
+                      <th className="border border-slate-200 px-3 py-2 text-center">Hãng tàu (OPR)</th>
+                      <th className="border border-slate-200 px-3 py-2 text-center">Trọng lượng</th>
+                      <th className="border border-slate-200 px-3 py-2 text-center w-16">Dòng Excel</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {blockContainers.map((item, idx) => (
+                      <tr
+                        key={item.id}
+                        className={`hover:bg-blue-50/40 transition-colors ${
+                          idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                        }`}
+                      >
+                        <td className="border border-slate-200 px-3 py-2 text-center text-slate-500 font-mono">
+                          {idx + 1}
+                        </td>
+                        <td className="border border-slate-200 px-3 py-2 font-mono font-bold text-slate-900">
+                          {item.containerNo}
+                        </td>
+                        <td className="border border-slate-200 px-3 py-2 text-center font-mono font-semibold text-blue-700 bg-blue-50/30">
+                          {item.location || item.block}
+                        </td>
+                        <td className="border border-slate-200 px-3 py-2 text-center font-medium text-slate-700">
+                          {item.sizeType}
+                        </td>
+                        <td className="border border-slate-200 px-3 py-2 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              item.fe === 'F' || item.fe === 'FULL'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {item.fe === 'F' ? 'Hàng (F)' : item.fe === 'E' ? 'Rỗng (E)' : item.fe}
+                          </span>
+                        </td>
+                        <td className="border border-slate-200 px-3 py-2 text-center font-bold text-slate-800">
+                          {item.operator || '-'}
+                        </td>
+                        <td className="border border-slate-200 px-3 py-2 text-center text-slate-600">
+                          {item.grossWeight || '-'}
+                        </td>
+                        <td className="border border-slate-200 px-3 py-2 text-center text-slate-400 font-mono text-[11px]">
+                          #{item.rowIdx}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
+              <div>
+                Đang hiển thị <b>{blockContainers.length}</b> container
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedBlock(null)}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold transition-colors shadow-2xs"
+              >
+                Đóng cửa sổ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
-

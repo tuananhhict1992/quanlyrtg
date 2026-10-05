@@ -11,6 +11,7 @@ import {
   Loader2,
   Lock,
   ShieldCheck,
+  ExternalLink,
 } from "lucide-react";
 import { canUserLogin } from "../utils/permissionUtils";
 
@@ -260,6 +261,17 @@ export const LoginView: React.FC<LoginViewProps> = ({
             </svg>
             <span>Admin đăng nhập với Google</span>
           </button>
+          {typeof window !== 'undefined' && window.self !== window.top && (
+            <button
+              type="button"
+              onClick={() => window.open(window.location.href, '_blank')}
+              className="mt-2.5 w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-sky-200 bg-sky-50 hover:bg-sky-100 text-sky-800 text-xs font-semibold transition-colors shadow-2xs"
+              title="Mở ứng dụng trong tab mới để đăng nhập Google không bị chặn bởi khung xem trước"
+            >
+              <ExternalLink size={13} className="text-sky-600 shrink-0" />
+              <span>Mở trong Tab mới (Chế độ xem trước Google AI Studio)</span>
+            </button>
+          )}
           <p className="mt-7 flex items-start gap-2 text-[11px] text-slate-400 leading-relaxed">
             <Lock size={14} className="shrink-0 mt-0.5" />
             <span>

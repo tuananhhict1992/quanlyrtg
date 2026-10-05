@@ -475,6 +475,7 @@ export interface Quiz {
   scheduledEndTime?: string; // e.g. "2026-09-20T17:00" - Hẹn giờ kết thúc kiểm tra
   isRandomQuestions?: boolean; // Tự động chọn câu hỏi ngẫu nhiên khi thí sinh vào thi
   randomQuestionCount?: number; // Số lượng câu hỏi tự động bốc ngẫu nhiên
+  maxAttempts?: number; // Cài đặt số lần được làm đề (ví dụ: 1, 2, 3...; nếu để trống hoặc 0 thì không giới hạn)
 }
 
 export interface QuizSubmission {

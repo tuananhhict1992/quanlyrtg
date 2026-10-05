@@ -31,7 +31,48 @@ export const requireAuth = async (req: any, _res: any, next: any) => {
        left join auth.sessions s on s.id=$2 and s.user_id=a.auth_user_id where a.auth_user_id=$1`,
       [authUser.id, sessionId],
     );
-    const account = result.rows[0];
+    let account = result.rows[0];
+    if (!account && authUser.email) {
+      const adminMatch = await pool.query(
+        `select r.id, r.data from private.records r
+         where r.module='employees' and r.data->>'status'='ACTIVE' and r.data->>'role'='ADMIN'
+         and (
+           lower(btrim(r.data->>'email')) = lower(btrim($1))
+           or exists (
+             select 1 from private.google_connections gc
+             where gc.id='primary' and lower(btrim(gc.email)) = lower(btrim($1))
+           )
+         )
+         limit 1`,
+        [authUser.email],
+      );
+      if (adminMatch.rows[0]) {
+        const emp = adminMatch.rows[0];
+        try {
+          await pool.query(
+            `insert into private.accounts(auth_user_id,employee_id,must_change_password,credentials_changed_at)
+             values($1,$2,false,clock_timestamp())
+             on conflict(auth_user_id) do update set employee_id=excluded.employee_id`,
+            [authUser.id, emp.id],
+          );
+        } catch {
+          await pool.query(
+            `update private.accounts set auth_user_id=$1, must_change_password=false, credentials_changed_at=clock_timestamp() where employee_id=$2`,
+            [authUser.id, emp.id],
+          );
+        }
+        const refreshed = await pool.query(
+          `select r.data,a.must_change_password,a.credentials_changed_at,s.created_at as session_created_at
+           from private.accounts a join private.records r on r.module='employees' and r.id=a.employee_id
+           left join auth.sessions s on s.id=$2 and s.user_id=a.auth_user_id where a.auth_user_id=$1`,
+          [authUser.id, sessionId],
+        );
+        account = refreshed.rows[0];
+      }
+    }
+    if (account && !account.session_created_at && claims.amr?.some((m: any) => m.method === 'oauth')) {
+      account.session_created_at = authUser.last_sign_in_at || new Date().toISOString();
+    }
     const user = account?.data;
     assertSessionPolicy(account, claims, req.path);
     req.user = { ...user, requiresCredentialChange: account.must_change_password };

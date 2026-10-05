@@ -96,11 +96,21 @@ export async function changeOwnPassword(currentPassword: string, password: strin
 }
 export async function loginWithGoogle() {
   if (!configured) throw new Error("Chưa cấu hình Supabase.");
-  const { error } = await supabase.auth.signInWithOAuth({
+  const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
+  const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: location.origin },
+    options: {
+      redirectTo: location.origin,
+      skipBrowserRedirect: isInIframe,
+    },
   });
   if (error) throw error;
+  if (isInIframe && data?.url) {
+    const popup = window.open(data.url, 'google_login', 'width=540,height=680,left=250,top=100');
+    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+      window.open(data.url, '_blank');
+    }
+  }
 }
 export async function logoutUser() {
   const { error } = await supabase.auth.signOut();

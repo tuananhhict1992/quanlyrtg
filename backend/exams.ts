@@ -82,6 +82,20 @@ examsRouter.post(
       ).rows[0]?.data;
       if (!quiz) throw new HttpError(404, "Không tìm thấy bài thi.");
       checkSchedule(quiz, req.user);
+      if (typeof quiz.maxAttempts === "number" && quiz.maxAttempts > 0) {
+        const priorCount = (
+          await db.query(
+            "select count(*) as count from private.exam_attempts where quiz_id=$1 and employee_id=$2 and status='success'",
+            [req.params.id, req.user.id],
+          )
+        ).rows[0]?.count;
+        if (Number(priorCount) >= quiz.maxAttempts) {
+          throw new HttpError(
+            403,
+            `Bạn đã dùng hết số lần làm bài quy định (${quiz.maxAttempts} lần).`,
+          );
+        }
+      }
       const questions = [...quiz.questions];
       if (quiz.isRandomQuestions) {
         for (let i = questions.length - 1; i > 0; i--) {
