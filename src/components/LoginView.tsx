@@ -1,7 +1,7 @@
 import { BrandLogo } from "./Brand";
 import React, { useState, useEffect, useRef } from "react";
 import { Employee } from "../types";
-import { loginWithGoogle, loginWithUsername } from "../services/supabase";
+import { loginWithGoogle, loginWithUsername, getApiBaseUrl } from "../services/supabase";
 import {
   LogIn,
   Shield,
@@ -14,6 +14,10 @@ import {
   ExternalLink,
   Smartphone,
   Download,
+  Server,
+  Settings,
+  Check,
+  X,
 } from "lucide-react";
 import { canUserLogin } from "../utils/permissionUtils";
 
@@ -39,6 +43,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [credentialWaiting, setCredentialWaiting] = useState(false);
   const [waitSeconds, setWaitSeconds] = useState(0);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showServerModal, setShowServerModal] = useState(false);
+  const [serverUrlInput, setServerUrlInput] = useState(() => getApiBaseUrl());
+  const [serverSavedSuccess, setServerSavedSuccess] = useState(false);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -311,6 +318,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
             <Download size={13} className="text-emerald-600 shrink-0" />
             <span>Tải ứng dụng Android (.APK)</span>
           </a>
+          <button
+            type="button"
+            onClick={() => setShowServerModal(true)}
+            className="mt-2.5 w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors shadow-2xs"
+            title="Xem hoặc đổi địa chỉ IP/máy chủ backend để kết nối từ điện thoại"
+          >
+            <Server size={13} className="text-slate-500 shrink-0" />
+            <span>Địa chỉ máy chủ: {serverUrlInput ? serverUrlInput.replace(/^https?:\/\//, '') : 'Mặc định'}</span>
+          </button>
           <p className="mt-7 flex items-start gap-2 text-[11px] text-slate-400 leading-relaxed">
             <Lock size={14} className="shrink-0 mt-0.5" />
             <span>
@@ -328,6 +344,116 @@ export const LoginView: React.FC<LoginViewProps> = ({
           </p>
         </div>
       </section>
+
+      {/* Modal Cấu hình Máy chủ Backend */}
+      {showServerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                  <Server size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Địa chỉ Máy chủ Backend</h3>
+                  <p className="text-xs text-slate-500">Cấu hình kết nối API cho ứng dụng di động / APK</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowServerModal(false);
+                  setServerSavedSuccess(false);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Đường dẫn máy chủ API (Server URL)
+                </label>
+                <input
+                  type="url"
+                  value={serverUrlInput}
+                  onChange={(e) => {
+                    setServerUrlInput(e.target.value);
+                    setServerSavedSuccess(false);
+                  }}
+                  placeholder="http://192.168.1.5:3000 hoặc https://my-app.run.app"
+                  className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                />
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-2 text-xs text-slate-600">
+                <p className="font-semibold text-slate-800">💡 Gợi ý nhanh:</p>
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setServerUrlInput('http://192.168.1.5:3000')}
+                    className="text-left text-blue-600 hover:text-blue-800 hover:underline font-mono"
+                  >
+                    • Mạng Wi-Fi nội bộ: <b>http://192.168.1.5:3000</b>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setServerUrlInput('')}
+                    className="text-left text-slate-600 hover:text-slate-800 hover:underline"
+                  >
+                    • Mặc định: <b>Tự động nhận theo trình duyệt (Same Origin)</b>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 pt-1 border-t border-slate-200/60 leading-relaxed">
+                  Khi cài file APK vào điện thoại, hãy nhập địa chỉ IP máy chủ của bạn (ví dụ <code>http://192.168.1.5:3000</code>) hoặc tên miền Cloud đã deploy để app gửi dữ liệu về máy chủ.
+                </p>
+              </div>
+
+              {serverSavedSuccess && (
+                <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-medium animate-in fade-in">
+                  <Check size={15} className="text-emerald-600 shrink-0" />
+                  <span>Đã lưu thành công địa chỉ máy chủ! Ứng dụng sẽ kết nối đến địa chỉ này.</span>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowServerModal(false);
+                  setServerSavedSuccess(false);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cleaned = serverUrlInput.trim().replace(/\/$/, '');
+                  if (cleaned) {
+                    localStorage.setItem('rtg_server_url', cleaned);
+                  } else {
+                    localStorage.removeItem('rtg_server_url');
+                  }
+                  setServerSavedSuccess(true);
+                  setTimeout(() => {
+                    setShowServerModal(false);
+                    setServerSavedSuccess(false);
+                  }, 1200);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
+              >
+                <Check size={14} />
+                <span>Lưu cấu hình</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
