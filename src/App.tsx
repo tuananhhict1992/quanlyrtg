@@ -263,9 +263,6 @@ export default function App() {
     }
   };
 
-  // Seed Data Handler (Invoked from Navbar by Admin)
-  const handleManualSeed = async () => { if(!confirm('Đưa toàn bộ dữ liệu hiện tại vào hàng đợi báo cáo Google?'))return;try{await api('/google/sync',{method:'POST',body:'{}'});addToast('success','Đã đưa dữ liệu vào hàng đợi đồng bộ.');}catch(e){addToast('error',(e as Error).message);} }; 
-
   // Helper đóng / bỏ qua cửa sổ cập nhật thông tin
   const handleDismissOnboarding = useCallback(() => {
     if (currentUser) {
@@ -1543,9 +1540,7 @@ export default function App() {
       <Navbar
         currentUser={currentUser}
         allUsers={employees}
-        allEmployees={employees}
         onLogout={handleLogout}
-        onSeedData={handleManualSeed}
         onOpenMasterSync={() => setIsMasterSyncOpen(true)}
         mobileMenuOpen={mobileMenuOpen}
         setMobileMenuOpen={setMobileMenuOpen}
@@ -1808,22 +1803,17 @@ export default function App() {
           )}
 
           {activeTab === 'competency_rules' && (
-            <PermissionsView
-              key="competency_rules"
-              employees={employees}
+            <CompetencyStandardsView
               currentUser={currentUser}
-              appSettings={appSettings}
-              onUpdateEmployeePermissions={handleUpdateEmployeePermissions}
-              onUpdateEmployeeRole={handleUpdateEmployeeRole}
+              employees={employees}
+              appSettings={appSettings || undefined}
               onSaveAppSettings={handleSaveAppSettings}
-              initialSelectedEmpId={selectedEmpIdForPermission}
               onBackToDashboard={() => setActiveTab('dashboard')}
-              onUpdateEmployee={handleUpdateEmployee}
-              initialViewSection="COMPETENCY"
               allSubmissions={submissions}
               allFeedbacks={feedbacks}
               allBxxlRecords={bxxlRecords}
               allViolations={allViolationsList}
+              onUpdateEmployee={handleUpdateEmployee}
             />
           )}
 

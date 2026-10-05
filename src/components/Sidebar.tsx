@@ -18,6 +18,7 @@ import {
   SlidersHorizontal,
   AlertTriangle,
   Scale,
+  BookOpen,
 } from 'lucide-react';
 import { Employee, PermissionKey, TabType } from '../types';
 import { ROLE_CONFIGS, DEFAULT_VISIBLE_TABS_BY_ROLE } from '../mockData';
@@ -115,6 +116,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: FileSpreadsheet,
     },
     {
+      id: 'library',
+      label: 'Thư viện Tài liệu',
+      sublabel: 'Nội quy, SOP & Sổ tay kỹ thuật',
+      icon: BookOpen,
+      badge: badgeCounts?.library,
+      badgeColor: 'bg-teal-100 text-teal-800',
+    },
+    {
       id: 'drive',
       label: 'Google Drive',
       sublabel: 'Quản lý tệp đám mây',
@@ -171,10 +180,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Nếu không: lấy theo DEFAULT_VISIBLE_TABS_BY_ROLE của role hiện tại
   const configuredVisibleTabs: TabType[] =
     currentUser.role === 'ADMIN'
-      ? ['dashboard', 'hr', 'violations', 'bxxl', 'leave', 'container_tool', 'drive', 'quiz', 'feedback', 'zalo', 'competency_rules', 'permissions', 'settings']
+      ? ['dashboard', 'hr', 'violations', 'bxxl', 'leave', 'container_tool', 'library', 'drive', 'quiz', 'feedback', 'zalo', 'competency_rules', 'permissions', 'settings']
       : currentUser.visibleTabs && currentUser.visibleTabs.length > 0
       ? currentUser.visibleTabs
-      : DEFAULT_VISIBLE_TABS_BY_ROLE[currentUser.role] || ['violations', 'leave', 'container_tool', 'quiz', 'feedback', 'settings'];
+      : DEFAULT_VISIBLE_TABS_BY_ROLE[currentUser.role] || ['violations', 'leave', 'container_tool', 'library', 'quiz', 'feedback', 'settings'];
 
   const visibleNavItems = navItems.filter((item) => {
     return isTabAllowed(item.id, currentUser);

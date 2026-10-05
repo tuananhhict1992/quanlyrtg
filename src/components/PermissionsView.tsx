@@ -62,17 +62,6 @@ import {
   DEFAULT_VISIBLE_TABS_BY_ROLE,
   ModuleTabConfig,
 } from '../mockData';
-import {
-  testGoogleSheetWebhook,
-  syncAllDataToGoogleSheet,
-  syncAllQuizzesToSheet,
-  syncAllFeedbacksToSheet,
-  syncAllBxxlToSheet,
-  syncAllEmployeesToSheet,
-  syncAllViolationsToSheet,
-  GOOGLE_APPS_SCRIPT_TEMPLATE,
-} from '../services/googleSheetSyncService';
-
 interface PermissionsViewProps {
   employees: Employee[];
   currentUser: Employee;
@@ -94,7 +83,7 @@ interface PermissionsViewProps {
   onBackToDashboard?: () => void;
   initialSelectedEmpId?: string;
   onUpdateEmployee?: (emp: Employee) => void;
-  initialViewSection?: 'PERMISSIONS' | 'COMPETENCY' | 'GOOGLE_SHEETS' | 'QUICK_LINKS';
+  initialViewSection?: 'PERMISSIONS' | 'COMPETENCY' | 'QUICK_LINKS';
   allSubmissions?: QuizSubmission[];
   allFeedbacks?: FeedbackProposal[];
   allBxxlRecords?: BxxlRecord[];
@@ -121,8 +110,8 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
   allBxxlRecords = [],
   allViolations = [],
 }) => {
-  const [viewSection, setViewSection] = useState<'PERMISSIONS' | 'COMPETENCY' | 'GOOGLE_SHEETS' | 'QUICK_LINKS'>(
-    initialViewSection || 'PERMISSIONS'
+  const [viewSection, setViewSection] = useState<'PERMISSIONS' | 'COMPETENCY' | 'QUICK_LINKS'>(
+    (initialViewSection as any) === 'GOOGLE_SHEETS' ? 'PERMISSIONS' : (initialViewSection || 'PERMISSIONS')
   );
   const [permissionsSubMode, setPermissionsSubMode] = useState<'ROLES' | 'INDIVIDUAL' | 'MATRIX'>(
     initialSelectedEmpId ? 'INDIVIDUAL' : 'ROLES'
@@ -130,7 +119,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
 
   React.useEffect(() => {
     if (initialViewSection) {
-      setViewSection(initialViewSection);
+      setViewSection((initialViewSection as any) === 'GOOGLE_SHEETS' ? 'PERMISSIONS' : initialViewSection);
     }
   }, [initialViewSection]);
 
@@ -473,18 +462,6 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
           <Shield className="w-4 h-4" />
           <span>Phân Quyền & Hiển Thị Menu</span>
         </button>
-        {currentUser.role === 'ADMIN' && <button
-          type="button"
-          onClick={() => setViewSection('GOOGLE_SHEETS')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
-            viewSection === 'GOOGLE_SHEETS'
-              ? 'bg-white text-indigo-700 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-          <span>Đồng Bộ Google Sheet</span>
-        </button>}
         <button
           type="button"
           onClick={() => setViewSection('COMPETENCY')}
@@ -566,7 +543,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
           allViolations={allViolations}
           onUpdateEmployee={onUpdateEmployee}
         />
-      ) : viewSection === 'GOOGLE_SHEETS' ? <p className="rounded-xl border bg-white p-4 text-sm">Sử dụng bảng Google Sync phía trên để xem hàng đợi, Retry, Backup và Preview/Confirm Import. Kết nối Google được quản lý trên server.</p> : viewSection === 'QUICK_LINKS' ? (
+      ) : viewSection === 'QUICK_LINKS' ? (
         <div className="space-y-6">
           {/* Top Banner */}
           <div className="p-5 bg-gradient-to-r from-blue-50 via-indigo-50 to-white rounded-3xl border border-blue-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">

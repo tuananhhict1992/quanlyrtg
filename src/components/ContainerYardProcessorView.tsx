@@ -220,7 +220,17 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
     setErrorMessage(null);
     setResult(null);
       try {
-        const workbook = await parseWorkbook(file,'shipProductivity');
+        let workbook: XLSX.WorkBook;
+        try {
+          workbook = await parseWorkbook(file, 'shipProductivity');
+        } catch (serverErr: any) {
+          if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')) {
+            const buffer = await file.arrayBuffer();
+            workbook = XLSX.read(buffer, { type: 'array', cellFormula: false, cellHTML: false });
+          } else {
+            throw serverErr;
+          }
+        }
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
         const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, {

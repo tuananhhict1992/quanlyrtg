@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Chạy RTG Dev Server (npm run dev)",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm run dev"
+        },
+        {
+            "name": "Debug Server (tsx server.ts)",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "npx",
+            "runtimeArgs": ["tsx", "server.ts"],
+            "console": "integratedTerminal",
+            "restart": true
+        }
+    ]
+}

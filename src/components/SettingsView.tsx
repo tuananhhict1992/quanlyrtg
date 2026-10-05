@@ -125,42 +125,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
       </div>
 
-      {/* Admin/Manager Callout Card for Google Sheet */}
-      {currentUser.role === 'ADMIN' && onNavigateToPermissions && (
-        <div className="p-5 bg-gradient-to-r from-emerald-50 via-teal-50 to-white rounded-3xl border border-emerald-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <FileSpreadsheet className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <span>Cấu Hình Tự Động Đồng Bộ Google Sheet</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  Đã chuyển sang Cấp Quyền & Hiển Thị
-                </span>
-              </h4>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Theo dõi hàng đợi báo cáo Google, thử lại đồng bộ lỗi và sao lưu tại mục <b>Cấp quyền & Hiển thị</b>.
-                {appSettings?.googleSheetLastSyncAt && (
-                  <span className="block mt-1 text-slate-500 font-semibold">
-                    • Lần đồng bộ gần nhất: {appSettings.googleSheetLastSyncAt}
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onNavigateToPermissions}
-            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shrink-0 transition-colors shadow-xs cursor-pointer"
-          >
-            <span>Mở Cài Đặt Google Sheet</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
       {/* Account Info Form Card */}
       <div className="bg-white rounded-3xl shadow-xs border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">

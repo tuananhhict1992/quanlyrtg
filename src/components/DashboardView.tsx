@@ -142,15 +142,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   }, [appSettings]);
 
-  const handleOpenQuickLink = (url: string | undefined, label: string) => {
+  const handleOpenQuickLink = (
+    url: string | undefined,
+    fallbackAction: () => void
+  ) => {
     if (url && url.trim()) {
       window.open(url.trim(), '_blank', 'noopener,noreferrer');
     } else {
-      if (isAdmin) {
-        setIsEditLinksOpen(true);
-      } else {
-        alert(`Đường link "${label}" chưa được cài đặt. Vui lòng liên hệ Quản trị viên để cấu hình.`);
-      }
+      fallbackAction();
     }
   };
 
@@ -204,12 +203,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {isAdmin && <button id="dash-edit-quick-links-btn" type="button" onClick={() => {setSaveLinksSuccess(null);setIsEditLinksOpen(true);}} className="hict-button hict-button-quiet"><Settings2 size={14} />Cài đặt liên kết (Admin)</button>}
           </div>
           <div className="hict-quick-grid">
-            <button id="dash-quick-search-btn" type="button" className="hict-quick-link hict-quick-blue" onClick={() => handleOpenQuickLink(appSettings?.traCuuLink,'Tra Cứu NQ-QĐ')}><Search /><strong>Tra Cứu NQ-QĐ</strong><span>Nghị quyết & quy định</span></button>
-            <button id="dash-quick-library-btn" type="button" className="hict-quick-link hict-quick-teal" onClick={() => handleOpenQuickLink(appSettings?.libraryLink || appSettings?.nqQdDriveLink,'Tra Cứu Kỹ thuật')}><BookOpen /><strong>Tra Cứu Kỹ thuật</strong><span>Sổ tay & kỹ thuật</span></button>
-            <button id="dash-quick-vehicle-btn" type="button" className="hict-quick-link hict-quick-amber" onClick={() => handleOpenQuickLink(appSettings?.vehicleStatusLink,'Tình trạng Phương tiện')}><Truck /><strong>Phương tiện</strong><span>Tình trạng kỹ thuật</span></button>
-            <button id="dash-quick-engine-roof-btn" type="button" className="hict-quick-link hict-quick-orange" onClick={() => handleOpenQuickLink(appSettings?.engineRoofIncidentLink,'Nổ máy/ Thủng nóc')}><Flame /><strong>Nổ máy / Thủng nóc</strong><span>Sự cố thiết bị & vỏ</span></button>
-            <button id="dash-quick-violation-btn" type="button" className="hict-quick-link hict-quick-rose" onClick={() => handleOpenQuickLink(appSettings?.violationReportLink,'Thư viện')}><BookOpen /><strong>Thư viện</strong><span>Tài liệu & quy định</span></button>
-            <button id="dash-quick-quiz-btn" type="button" className="hict-quick-link hict-quick-violet" onClick={() => {if(appSettings?.quizLink?.trim())window.open(appSettings.quizLink.trim(),'_blank','noopener,noreferrer');else setActiveTab('quiz');}}><GraduationCap /><strong>Kiểm tra</strong><span>Đánh giá năng lực</span></button>
+            <button id="dash-quick-search-btn" type="button" className="hict-quick-link hict-quick-blue" onClick={() => handleOpenQuickLink(appSettings?.traCuuLink, () => { onNavigateToLibraryCategory?.('NOI_QUY'); setActiveTab('library'); })}><Search /><strong>Tra Cứu NQ-QĐ</strong><span>Nghị quyết & quy định</span></button>
+            <button id="dash-quick-library-btn" type="button" className="hict-quick-link hict-quick-teal" onClick={() => handleOpenQuickLink(appSettings?.libraryLink || appSettings?.nqQdDriveLink, () => { onNavigateToLibraryCategory?.('QUY_CHUAN'); setActiveTab('library'); })}><BookOpen /><strong>Tra Cứu Kỹ thuật</strong><span>Sổ tay & kỹ thuật</span></button>
+            <button id="dash-quick-vehicle-btn" type="button" className="hict-quick-link hict-quick-amber" onClick={() => handleOpenQuickLink(appSettings?.vehicleStatusLink, () => { if (isAdmin) setIsEditLinksOpen(true); else setActiveTab('container_tool'); })}><Truck /><strong>Phương tiện</strong><span>Tình trạng kỹ thuật</span></button>
+            <button id="dash-quick-engine-roof-btn" type="button" className="hict-quick-link hict-quick-orange" onClick={() => handleOpenQuickLink(appSettings?.engineRoofIncidentLink, () => setActiveTab('violations'))}><Flame /><strong>Nổ máy / Thủng nóc</strong><span>Sự cố thiết bị & vỏ</span></button>
+            <button id="dash-quick-violation-btn" type="button" className="hict-quick-link hict-quick-rose" onClick={() => handleOpenQuickLink(appSettings?.violationReportLink, () => setActiveTab('library'))}><BookOpen /><strong>Thư viện</strong><span>Tài liệu & quy định</span></button>
+            <button id="dash-quick-quiz-btn" type="button" className="hict-quick-link hict-quick-violet" onClick={() => handleOpenQuickLink(appSettings?.quizLink, () => setActiveTab('quiz'))}><GraduationCap /><strong>Kiểm tra</strong><span>Đánh giá năng lực</span></button>
           </div>
           <button id="dash-quick-userinfo-btn" type="button" onClick={() => setShowUserInfo(true)} className="hict-button hict-quick-profile w-full mt-3"><User size={15} />Thông tin của tôi<ArrowRight size={14} className="ml-auto" /></button>
         </section>

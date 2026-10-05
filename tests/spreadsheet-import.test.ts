@@ -56,5 +56,18 @@ test('yard preview does not persist files, results or sync jobs; other imports s
     assert.equal(staged.payload.mimeType,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     assert.equal(staged.status,'pending');assert.equal(staged.business_saved_at,null);assert.equal(staged.archived_at,null);
     assert.deepEqual(Buffer.from(staged.bytes),bytes);
+
+    // Verify shipProductivity allows > 2000 rows (yard data)
+    const largeYard=XLSX.utils.book_new();
+    const largeYardRows = [['BLOCK','NOTIN_LOADLIST_FLG'], ...Array.from({length:2500},(_,i)=>['A01', i%2===0 ? 'N':'Y'])];
+    XLSX.utils.book_append_sheet(largeYard,XLSX.utils.aoa_to_sheet(largeYardRows),'Yard');
+    const largeYardBytes=Buffer.from(XLSX.write(largeYard,{type:'buffer',bookType:'xlsx'}));
+    const yardRes = await request(app).post('/excel/preview').field('module','shipProductivity').attach('file',largeYardBytes,{filename:'yard-large.xlsx',contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    assert.equal(yardRes.status,200);
+    assert.equal(XLSX.utils.sheet_to_json(yardRes.body.workbook.Sheets.Yard,{header:1}).length,2501);
+
+    // Verify other modules reject > 2000 rows
+    const otherRes = await request(app).post('/excel/preview').field('module','employees').attach('file',largeYardBytes,{filename:'yard-large.xlsx',contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    assert.equal(otherRes.status,413);
   }finally{(pool as any).connect=savedConnect;await db.close();}
 });

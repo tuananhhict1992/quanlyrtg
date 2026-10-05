@@ -5,7 +5,17 @@ import { HttpError } from './db';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const XLS_MIME = 'application/vnd.ms-excel';
-export async function parseSpreadsheet(buffer: Buffer, claimed: string, name: string) {
+export interface ParseSpreadsheetOptions {
+  maxRows?: number;
+  maxCols?: number;
+}
+
+export async function parseSpreadsheet(
+  buffer: Buffer,
+  claimed: string,
+  name: string,
+  options?: ParseSpreadsheetOptions,
+) {
   if (!buffer.length || buffer.length > 20 * 1024 * 1024) throw new HttpError(413,'Tệp phải từ 1 byte đến 20 MB.');
   const ext = name.split('.').pop()?.toLowerCase();
   const mime = claimed.toLowerCase().split(';')[0].trim();
@@ -41,16 +51,35 @@ export async function parseSpreadsheet(buffer: Buffer, claimed: string, name: st
     } catch { throw new HttpError(415,'CSV cần là văn bản UTF-8 hoặc UTF-16 có cột phân cách bằng dấu phẩy, chấm phẩy hoặc tab.'); }
     canonicalMime = 'text/csv';
   } else throw new HttpError(415,'Công cụ xử lý dữ liệu hỗ trợ .xlsx, .xls và .csv.');
+  const maxRows = options?.maxRows ?? 2000;
+  const maxCols = options?.maxCols ?? 100;
   let workbook: XLSX.WorkBook;
   try {
-    workbook = XLSX.read(source,{type:typeof source==='string'?'string':'buffer',sheetRows:2001,cellFormula:false,cellHTML:false,bookVBA:false,raw:ext==='csv'});
-  } catch { throw new HttpError(415,'Không đọc được bảng tính. Tệp có thể hỏng hoặc được bảo vệ bằng mật khẩu; hãy lưu một bản .xlsx hợp lệ.'); }
-  if (!workbook.SheetNames.length) throw new HttpError(415,'Tệp không chứa bảng dữ liệu.');
-  if (workbook.SheetNames.length > 20) throw new HttpError(413,'Tối đa 20 sheet mỗi tệp.');
-  for (const name of workbook.SheetNames) {
-    const sheet=workbook.Sheets[name];
-    const range=XLSX.utils.decode_range(sheet['!fullref'] || sheet['!ref'] || 'A1');
-    if (range.e.r>=2000 || range.e.c>=100) throw new HttpError(413,'Mỗi sheet tối đa 2.000 dòng và 100 cột.');
+    workbook = XLSX.read(source, {
+      type: typeof source === 'string' ? 'string' : 'buffer',
+      sheetRows: maxRows + 1,
+      cellFormula: false,
+      cellHTML: false,
+      bookVBA: false,
+      raw: ext === 'csv',
+    });
+  } catch {
+    throw new HttpError(
+      415,
+      'Không đọc được bảng tính. Tệp có thể hỏng hoặc được bảo vệ bằng mật khẩu; hãy lưu một bản .xlsx hợp lệ.',
+    );
   }
-  return {workbook,mimeType:canonicalMime};
+  if (!workbook.SheetNames.length) throw new HttpError(415, 'Tệp không chứa bảng dữ liệu.');
+  if (workbook.SheetNames.length > 20) throw new HttpError(413, 'Tối đa 20 sheet mỗi tệp.');
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name];
+    const range = XLSX.utils.decode_range(sheet['!fullref'] || sheet['!ref'] || 'A1');
+    if (range.e.r >= maxRows || range.e.c >= maxCols) {
+      throw new HttpError(
+        413,
+        `Mỗi sheet tối đa ${maxRows.toLocaleString('vi-VN')} dòng và ${maxCols} cột.`,
+      );
+    }
+  }
+  return { workbook, mimeType: canonicalMime };
 }

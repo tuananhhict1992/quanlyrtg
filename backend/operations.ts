@@ -78,10 +78,12 @@ operationsRouter.post(
     const module = validModule(req.body.module);
     assertPermission(req.user, MODULE_PERMISSIONS[module]);
     if (!req.file) throw new HttpError(400, "Chưa chọn Excel.");
+    const isYard = module === 'shipProductivity';
     const {workbook,mimeType} = await parseSpreadsheet(
       req.file.buffer,
       req.file.mimetype,
       req.file.originalname,
+      isYard ? { maxRows: 100000, maxCols: 100 } : undefined,
     );
     // Yard statistics are a transient viewer: never stage the source or enqueue an archive.
     if (module === 'shipProductivity') {

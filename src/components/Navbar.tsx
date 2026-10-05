@@ -193,18 +193,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </button>
                     )}
 
-                    {onSeedData && currentUser.role === "ADMIN" && (
-                      <button
-                        onClick={() => {
-                          setDropdownOpen(false);
-                          onSeedData();
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left hover:bg-indigo-50 text-indigo-700 transition-colors text-xs font-semibold"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5 text-indigo-500" />
-                        <span>Đồng bộ dữ liệu chuẩn lên PostgreSQL</span>
-                      </button>
-                    )}
 
                     <button
                       onClick={() => {
