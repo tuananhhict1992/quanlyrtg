@@ -192,7 +192,6 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
       DEFAULT_VISIBLE_TABS_BY_ROLE[selectedEmployee.role] || [
         'leave',
         'container_tool',
-        'library',
         'quiz',
         'feedback',
         'settings',
@@ -231,7 +230,6 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
         ? emp.visibleTabs
         : DEFAULT_VISIBLE_TABS_BY_ROLE[emp.role] || [
             'container_tool',
-            'library',
             'quiz',
             'feedback',
             'settings',
@@ -324,7 +322,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
     if (!selectedEmployee) return;
     const defaultPerms = ROLE_CONFIGS[selectedEmployee.role]?.defaultPermissions || [];
     const defaultTabs =
-      DEFAULT_VISIBLE_TABS_BY_ROLE[selectedEmployee.role] || ['container_tool', 'library', 'settings'];
+      DEFAULT_VISIBLE_TABS_BY_ROLE[selectedEmployee.role] || ['container_tool', 'settings'];
     const defaultDepts =
       selectedEmployee.role === 'ADMIN' || selectedEmployee.role === 'MANAGER_L1'
         ? ['ALL']
@@ -345,7 +343,7 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
     if (!selectedEmployee) return;
     onUpdateEmployeeRole(selectedEmployee.id, newRole);
     const newDefaults = ROLE_CONFIGS[newRole]?.defaultPermissions || [];
-    const newTabs = DEFAULT_VISIBLE_TABS_BY_ROLE[newRole] || ['container_tool', 'library', 'settings'];
+    const newTabs = DEFAULT_VISIBLE_TABS_BY_ROLE[newRole] || ['container_tool', 'settings'];
     const newDepts =
       newRole === 'ADMIN' || newRole === 'MANAGER_L1'
         ? ['ALL']
@@ -1418,7 +1416,6 @@ export const PermissionsView: React.FC<PermissionsViewProps> = ({
                         onClick={() =>
                           setCurrentVisibleTabs([
                             'container_tool',
-                            'library',
                             'quiz',
                             'feedback',
                             'settings',

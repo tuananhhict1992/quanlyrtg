@@ -61,7 +61,6 @@ export function getFirstAllowedTab(user: Employee | null | undefined): TabType {
     'violations',
     'leave',
     'container_tool',
-    'library',
     'quiz',
     'feedback',
     'drive',

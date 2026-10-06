@@ -17,6 +17,9 @@ import {
   Search,
   Layers,
   Filter,
+  Clock,
+  MapPin,
+  ArrowUpDown,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -32,7 +35,8 @@ export interface ContainerItemDetail {
   containerNo: string;
   block: string;
   location: string;
-  sizeType: string;
+  time: string; // Cột U trong file dữ liệu
+  sizeType?: string;
   fe: string; // Full/Empty
   grossWeight: string;
   operator: string;
@@ -73,6 +77,96 @@ export function normalizeBlockName(raw: any): string {
   return str;
 }
 
+/**
+ * Định dạng vị trí bãi (Bay-Row-Tier) phân cách theo:
+ * 3 số đầu là bay, 2 số tiếp theo là row, 2 số cuối là tier
+ * Ví dụ: 0260202 -> 026-02-02
+ */
+export function formatYardLocation(raw: any): string {
+  if (raw === undefined || raw === null) return '';
+  const str = String(raw).trim();
+  if (!str) return '';
+
+  // Nếu đã có định dạng 3 số - 2 số - 2 số (ví dụ: 026-02-02)
+  if (/^\d{3}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+
+  // Chuỗi thuần 7 chữ số (ví dụ: 0260202 -> 026-02-02)
+  if (/^\d{7}$/.test(str)) {
+    return `${str.slice(0, 3)}-${str.slice(3, 5)}-${str.slice(5, 7)}`;
+  }
+
+  // Chuỗi chứa cụm 7 số (ví dụ: A01-0260202 hoặc A010260202)
+  const match7 = str.match(/(?:^|[^\d])(\d{7})(?:$|[^\d])/);
+  if (match7) {
+    const digits = match7[1];
+    const formatted = `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5, 7)}`;
+    return str.replace(digits, formatted);
+  }
+
+  // Nếu chuỗi kết thúc bằng 7 chữ số
+  const matchTrailing = str.match(/^(.*?)(\d{3})(\d{2})(\d{2})$/);
+  if (matchTrailing) {
+    const prefix = matchTrailing[1].trim();
+    const bay = matchTrailing[2];
+    const row = matchTrailing[3];
+    const tier = matchTrailing[4];
+    return prefix ? `${prefix}-${bay}-${row}-${tier}` : `${bay}-${row}-${tier}`;
+  }
+
+  return str;
+}
+
+/**
+ * Chuẩn hóa giá trị thời gian lấy từ Cột U trong file Excel
+ */
+export function formatYardTime(raw: any): string {
+  if (raw === undefined || raw === null || raw === '') return '-';
+
+  // Nếu là số serial date của Excel
+  if (typeof raw === 'number') {
+    try {
+      const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
+      if (!isNaN(date.getTime())) {
+        const d = date.getDate().toString().padStart(2, '0');
+        const m = (date.getMonth() + 1).toString().padStart(2, '0');
+        const y = date.getFullYear();
+        const h = date.getHours().toString().padStart(2, '0');
+        const mi = date.getMinutes().toString().padStart(2, '0');
+        return `${h}:${mi} ${d}/${m}/${y}`;
+      }
+    } catch {
+      return String(raw);
+    }
+  }
+
+  const str = String(raw).trim();
+  if (!str) return '-';
+
+  // Nếu là chuỗi số serial
+  if (/^\d+(\.\d+)?$/.test(str)) {
+    const num = parseFloat(str);
+    if (num > 30000 && num < 60000) {
+      try {
+        const date = new Date(Math.round((num - 25569) * 86400 * 1000));
+        if (!isNaN(date.getTime())) {
+          const d = date.getDate().toString().padStart(2, '0');
+          const m = (date.getMonth() + 1).toString().padStart(2, '0');
+          const y = date.getFullYear();
+          const h = date.getHours().toString().padStart(2, '0');
+          const mi = date.getMinutes().toString().padStart(2, '0');
+          return `${h}:${mi} ${d}/${m}/${y}`;
+        }
+      } catch {
+        // fallback
+      }
+    }
+  }
+
+  return str;
+}
+
 interface ContainerYardProcessorViewProps {
   onBackToDashboard?: () => void;
 }
@@ -90,6 +184,8 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
   const [modalSearch, setModalSearch] = useState<string>('');
   const [copiedModalList, setCopiedModalList] = useState(false);
+  const [modalSortKey, setModalSortKey] = useState<'default' | 'time' | 'location'>('default');
+  const [modalSortOrder, setModalSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,8 +204,9 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
 
     let colSIdx = 18; // Cột S (BLOCK)
     let colADIdx = 29; // Cột AD (NOTIN_LOADLIST_FLG)
-    let colCntrIdx = 1; // Số Container (mặc định cột B hoặc tìm theo tên)
-    let colLocIdx = 19; // Vị trí bãi chi tiết (Bay-Row-Tier)
+    let colCntrIdx = 4; // Cột E (Số Container - Cố định theo Cột E trong file dữ liệu)
+    let colLocIdx = 19; // Cột T (Vị trí bãi Bay-Row-Tier)
+    let colTimeIdx = 20; // Cột U (Thời gian - Cố định theo Cột U trong file dữ liệu)
     let colSizeIdx = 4; // Kích cỡ / SZTP
     let colFEIdx = 5; // FE (Hàng/Rỗng)
     let colWeightIdx = 8; // Trọng lượng
@@ -132,24 +229,12 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
       if (foundS !== -1) colSIdx = foundS;
       if (foundAD !== -1) colADIdx = foundAD;
 
-      // Tìm các cột bổ trợ
-      const foundCntr = row.findIndex((c) => {
-        const str = String(c).trim().toUpperCase();
-        return str === 'CONTAINER' || str === 'CNTR_NO' || str === 'CONTAINER_NO' || str === 'CNTR' || str === 'CONT';
-      });
-      if (foundCntr !== -1) colCntrIdx = foundCntr;
-
+      // Tìm vị trí bãi nếu có tên cột
       const foundLoc = row.findIndex((c) => {
         const str = String(c).trim().toUpperCase();
         return str === 'LOCATION' || str === 'YARD_LOC' || str === 'BAY_ROW_TIER' || str === 'POSITION' || str === 'VỊ TRÍ';
       });
       if (foundLoc !== -1) colLocIdx = foundLoc;
-
-      const foundSize = row.findIndex((c) => {
-        const str = String(c).trim().toUpperCase();
-        return str === 'SZTP' || str === 'SIZE' || str === 'TYPE' || str === 'ISO' || str === 'KÍCH CỠ';
-      });
-      if (foundSize !== -1) colSizeIdx = foundSize;
 
       const foundFE = row.findIndex((c) => {
         const str = String(c).trim().toUpperCase();
@@ -206,9 +291,19 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
       // 3. Tự động chuẩn hóa tên Block ở Cột S về chuẩn 2 chữ số (ví dụ: 'A1' -> 'A01', 'B2' -> 'B02')
       const normalizedBlock = normalizeBlockName(rawBlockStr);
 
-      // Trích xuất chi tiết container
-      const cntrNo = String(row[colCntrIdx] ?? '').trim() || `CONT-${i + 1}`;
-      const location = String(row[colLocIdx] ?? '').trim();
+      // Trích xuất chi tiết container:
+      // - Cột container lấy dữ liệu của cột E (index 4) trong file dữ liệu
+      const rawCntrVal = (row[4] !== undefined && row[4] !== '') ? row[4] : (colCntrIdx !== -1 && row[colCntrIdx] !== undefined ? row[colCntrIdx] : '');
+      const cntrNo = String(rawCntrVal ?? '').trim() || `CONT-${i + 1}`;
+
+      // - Vị trí bãi (Bay-Row-Tier) phân cách 3 số đầu là bay, 2 số tiếp row, 2 số cuối tier (ví dụ: 0260202 -> 026-02-02)
+      const rawLoc = String(row[colLocIdx] ?? row[19] ?? '').trim();
+      const location = formatYardLocation(rawLoc);
+
+      // - Cột thời gian lấy dữ liệu từ cột U (index 20) trong file dữ liệu
+      const rawTimeVal = (row[20] !== undefined && row[20] !== '') ? row[20] : (colTimeIdx !== -1 && row[colTimeIdx] !== undefined ? row[colTimeIdx] : '');
+      const time = formatYardTime(rawTimeVal);
+
       const sizeType = String(row[colSizeIdx] ?? '').trim();
       const fe = String(row[colFEIdx] ?? '').trim();
       const grossWeight = String(row[colWeightIdx] ?? '').trim();
@@ -219,6 +314,7 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
         containerNo: cntrNo,
         block: normalizedBlock,
         location: location || `${normalizedBlock}`,
+        time: time,
         sizeType: sizeType || '40HC',
         fe: fe || 'F',
         grossWeight: grossWeight || '',
@@ -344,16 +440,18 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
   const handleLoadDemoData = () => {
     setIsProcessing(true);
     setSelectedBlock(null);
+    setModalSortKey('default');
+    setModalSortOrder('asc');
     setTimeout(() => {
       const demoRows: any[][] = [];
       const headerRow = new Array(30).fill('');
-      headerRow[1] = 'CNTR_NO';
       headerRow[2] = 'OPR';
-      headerRow[4] = 'SZTP';
+      headerRow[4] = 'CONTAINER'; // Cột E: Số Container
       headerRow[5] = 'FE';
       headerRow[8] = 'GROSS_WT';
       headerRow[18] = 'BLOCK';
-      headerRow[19] = 'LOCATION';
+      headerRow[19] = 'LOCATION'; // Cột T: Vị trí bãi
+      headerRow[20] = 'IN_TIME';  // Cột U: Thời gian
       headerRow[29] = 'NOTIN_LOADLIST_FLG';
       demoRows.push(headerRow);
 
@@ -364,18 +462,28 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
       for (let i = 0; i < 300; i++) {
         const row = new Array(30).fill('');
         const chosenBlock = blockPool[Math.floor(Math.random() * blockPool.length)];
-        const normalized = normalizeBlockName(chosenBlock);
-        const bay = Math.floor(Math.random() * 20) + 1;
+        const bay = Math.floor(Math.random() * 30) + 1;
         const rowNum = Math.floor(Math.random() * 6) + 1;
         const tier = Math.floor(Math.random() * 5) + 1;
 
-        row[1] = `TCKU${Math.floor(1000000 + Math.random() * 9000000)}`;
+        // Cột E (index 4): Số Container
+        row[4] = `TCKU${Math.floor(1000000 + Math.random() * 9000000)}`;
         row[2] = oprPool[Math.floor(Math.random() * oprPool.length)];
-        row[4] = sztpPool[Math.floor(Math.random() * sztpPool.length)];
         row[5] = Math.random() > 0.3 ? 'F' : 'E';
         row[8] = `${(Math.random() * 28 + 2).toFixed(1)}T`;
         row[18] = chosenBlock;
-        row[19] = `${normalized}-${bay < 10 ? '0' + bay : bay}-${rowNum < 10 ? '0' + rowNum : rowNum}-${tier}`;
+
+        // Cột T (index 19): Vị trí bãi dạng 7 chữ số (ví dụ: 0260202 -> 026-02-02)
+        const bayStr = String(bay).padStart(3, '0');
+        const rowStr = String(rowNum).padStart(2, '0');
+        const tierStr = String(tier).padStart(2, '0');
+        row[19] = `${bayStr}${rowStr}${tierStr}`;
+
+        // Cột U (index 20): Thời gian
+        const day = String(1 + (i % 28)).padStart(2, '0');
+        const hour = String(6 + (i % 16)).padStart(2, '0');
+        const min = String((i * 13) % 60).padStart(2, '0');
+        row[20] = `${hour}:${min} ${day}/05/2026`;
 
         if (i % 9 === 0) {
           row[29] = 'Y';
@@ -463,32 +571,90 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
     setResult(null);
     setErrorMessage(null);
     setSelectedBlock(null);
+    setModalSortKey('default');
+    setModalSortOrder('asc');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
-  // Lọc danh sách container thuộc block đang chọn trong Modal
+  // Helper chuyển đổi chuỗi thời gian thành timestamp để so sánh
+  const parseTimeToTimestamp = (val: string): number => {
+    if (!val || val === '-') return 0;
+    const t = Date.parse(val);
+    if (!isNaN(t)) return t;
+
+    // Định dạng HH:mm DD/MM/YYYY
+    const m1 = val.match(/(\d{1,2}):(\d{1,2})\s+(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (m1) {
+      return new Date(Number(m1[5]), Number(m1[4]) - 1, Number(m1[3]), Number(m1[1]), Number(m1[2])).getTime();
+    }
+    // Định dạng DD/MM/YYYY HH:mm
+    const m2 = val.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}):(\d{1,2})/);
+    if (m2) {
+      return new Date(Number(m2[3]), Number(m2[2]) - 1, Number(m2[1]), Number(m2[4]), Number(m2[5])).getTime();
+    }
+    // Định dạng DD/MM/YYYY
+    const m3 = val.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (m3) {
+      return new Date(Number(m3[3]), Number(m3[2]) - 1, Number(m3[1])).getTime();
+    }
+    return 0;
+  };
+
+  // Lọc và sắp xếp danh sách container thuộc block đang chọn trong Modal
   const blockContainers = useMemo(() => {
     if (!result || !selectedBlock) return [];
     const list = result.containersByBlock[selectedBlock] || [];
-    if (!modalSearch.trim()) return list;
-    const q = modalSearch.trim().toLowerCase();
-    return list.filter(
-      (c) =>
-        c.containerNo.toLowerCase().includes(q) ||
-        c.location.toLowerCase().includes(q) ||
-        c.operator.toLowerCase().includes(q) ||
-        c.sizeType.toLowerCase().includes(q)
-    );
-  }, [result, selectedBlock, modalSearch]);
+    let filtered = list;
+
+    if (modalSearch.trim()) {
+      const q = modalSearch.trim().toLowerCase();
+      filtered = list.filter(
+        (c) =>
+          c.containerNo.toLowerCase().includes(q) ||
+          c.location.toLowerCase().includes(q) ||
+          c.time.toLowerCase().includes(q) ||
+          c.operator.toLowerCase().includes(q)
+      );
+    }
+
+    if (modalSortKey === 'default') {
+      return filtered;
+    }
+
+    return [...filtered].sort((a, b) => {
+      if (modalSortKey === 'location') {
+        // Sắp xếp tự nhiên theo vị trí bãi (Bay-Row-Tier)
+        const cmp = (a.location || '').localeCompare(b.location || '', undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+        return modalSortOrder === 'asc' ? cmp : -cmp;
+      }
+
+      if (modalSortKey === 'time') {
+        // Sắp xếp theo thời gian
+        const tA = parseTimeToTimestamp(a.time);
+        const tB = parseTimeToTimestamp(b.time);
+
+        if (tA !== 0 && tB !== 0) {
+          return modalSortOrder === 'asc' ? tA - tB : tB - tA;
+        }
+        const cmp = (a.time || '').localeCompare(b.time || '');
+        return modalSortOrder === 'asc' ? cmp : -cmp;
+      }
+
+      return 0;
+    });
+  }, [result, selectedBlock, modalSearch, modalSortKey, modalSortOrder]);
 
   const handleCopyModalList = () => {
     if (!selectedBlock || !blockContainers.length) return;
     let txt = `DANH SÁCH CONTAINER LƯU BÃI - BLOCK ${selectedBlock} (${blockContainers.length} Cont)\n`;
-    txt += `STT\tSố Container\tVị trí bãi\tKích cỡ\tF/E\tHãng tàu\tTrọng lượng\n`;
+    txt += `STT\tSố Container\tVị trí bãi\tThời gian\tF/E\tHãng tàu\tTrọng lượng\n`;
     blockContainers.forEach((c, idx) => {
-      txt += `${idx + 1}\t${c.containerNo}\t${c.location}\t${c.sizeType}\t${c.fe}\t${c.operator}\t${c.grossWeight}\n`;
+      txt += `${idx + 1}\t${c.containerNo}\t${c.location}\t${c.time}\t${c.fe}\t${c.operator}\t${c.grossWeight}\n`;
     });
     navigator.clipboard.writeText(txt).then(() => {
       setCopiedModalList(true);
@@ -499,14 +665,14 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
   const handleExportBlockExcel = () => {
     if (!selectedBlock || !blockContainers.length) return;
     const data: any[][] = [
-      ['STT', 'Số Container', 'Vị trí bãi', 'Kích cỡ (SZTP)', 'F/E', 'Hãng tàu', 'Trọng lượng', 'Dòng Excel gốc'],
+      ['STT', 'Số Container (Cột E)', 'Vị trí bãi (Bay-Row-Tier)', 'Thời gian (Cột U)', 'F/E', 'Hãng tàu', 'Trọng lượng', 'Dòng Excel gốc'],
     ];
     blockContainers.forEach((c, idx) => {
       data.push([
         idx + 1,
         c.containerNo,
         c.location,
-        c.sizeType,
+        c.time,
         c.fe,
         c.operator,
         c.grossWeight,
@@ -516,9 +682,9 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
     const ws = XLSX.utils.aoa_to_sheet(data);
     ws['!cols'] = [
       { wch: 8 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 15 },
+      { wch: 20 },
+      { wch: 22 },
+      { wch: 20 },
       { wch: 8 },
       { wch: 14 },
       { wch: 14 },
@@ -904,20 +1070,94 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
               </button>
             </div>
 
-            {/* Modal Search & Action Toolbar */}
-            <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-white">
-              <div className="relative w-full sm:w-72">
+            {/* Modal Search & Action Toolbar với Nút Sắp Xếp Nhanh */}
+            <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white">
+              <div className="relative w-full md:w-64">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Tìm số cont, vị trí, hãng tàu..."
+                  placeholder="Tìm số cont, vị trí, thời gian..."
                   value={modalSearch}
                   onChange={(e) => setModalSearch(e.target.value)}
                   className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 />
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              {/* Nhóm Nút Sắp Xếp Nhanh (Thời gian / Vị trí bãi) */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-xs text-slate-500 font-semibold flex items-center gap-1 mr-1">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" /> Sắp xếp:
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (modalSortKey === 'time') {
+                      setModalSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+                    } else {
+                      setModalSortKey('time');
+                      setModalSortOrder('desc');
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs ${
+                    modalSortKey === 'time'
+                      ? 'bg-blue-600 text-white shadow-blue-500/20'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                  }`}
+                  title="Nhấn để sắp xếp container theo thời gian (cột U)"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Theo Thời gian</span>
+                  {modalSortKey === 'time' && (
+                    <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded font-normal">
+                      {modalSortOrder === 'desc' ? 'Mới nhất ↓' : 'Cũ nhất ↑'}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (modalSortKey === 'location') {
+                      setModalSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+                    } else {
+                      setModalSortKey('location');
+                      setModalSortOrder('asc');
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs ${
+                    modalSortKey === 'location'
+                      ? 'bg-emerald-600 text-white shadow-emerald-500/20'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                  }`}
+                  title="Nhấn để sắp xếp container theo vị trí bãi (Bay-Row-Tier)"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Theo Vị trí bãi</span>
+                  {modalSortKey === 'location' && (
+                    <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded font-normal">
+                      {modalSortOrder === 'asc' ? 'Bay ↑' : 'Bay ↓'}
+                    </span>
+                  )}
+                </button>
+
+                {modalSortKey !== 'default' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalSortKey('default');
+                      setModalSortOrder('asc');
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+                    title="Khôi phục thứ tự gốc theo dòng file Excel"
+                  >
+                    Đặt lại
+                  </button>
+                )}
+              </div>
+
+              {/* Nút Sao chép & Xuất Excel */}
+              <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                 <button
                   type="button"
                   onClick={handleCopyModalList}
@@ -958,9 +1198,9 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
                   <thead>
                     <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                       <th className="border border-slate-200 px-3 py-2 text-center w-12">STT</th>
-                      <th className="border border-slate-200 px-3 py-2 text-left">Số Container</th>
+                      <th className="border border-slate-200 px-3 py-2 text-left">Số Container (Cột E)</th>
                       <th className="border border-slate-200 px-3 py-2 text-center">Vị trí bãi (Bay-Row-Tier)</th>
-                      <th className="border border-slate-200 px-3 py-2 text-center">Kích cỡ / ISO</th>
+                      <th className="border border-slate-200 px-3 py-2 text-center">Thời gian</th>
                       <th className="border border-slate-200 px-3 py-2 text-center">F / E</th>
                       <th className="border border-slate-200 px-3 py-2 text-center">Hãng tàu (OPR)</th>
                       <th className="border border-slate-200 px-3 py-2 text-center">Trọng lượng</th>
@@ -981,11 +1221,11 @@ export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProp
                         <td className="border border-slate-200 px-3 py-2 font-mono font-bold text-slate-900">
                           {item.containerNo}
                         </td>
-                        <td className="border border-slate-200 px-3 py-2 text-center font-mono font-semibold text-blue-700 bg-blue-50/30">
+                        <td className="border border-slate-200 px-3 py-2 text-center font-mono font-bold text-blue-700 bg-blue-50/30">
                           {item.location || item.block}
                         </td>
-                        <td className="border border-slate-200 px-3 py-2 text-center font-medium text-slate-700">
-                          {item.sizeType}
+                        <td className="border border-slate-200 px-3 py-2 text-center font-medium text-slate-700 whitespace-nowrap">
+                          {item.time || '-'}
                         </td>
                         <td className="border border-slate-200 px-3 py-2 text-center">
                           <span

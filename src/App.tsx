@@ -48,7 +48,6 @@ import { Sidebar, TabType } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
 const DashboardView=lazy(()=>import('./components/DashboardView').then(m=>({default:m.DashboardView})));
 const HrManagementView=lazy(()=>import('./components/HrManagementView').then(m=>({default:m.HrManagementView})));
-const LibraryView=lazy(()=>import('./components/LibraryView').then(m=>({default:m.LibraryView})));
 const GoogleDriveView=lazy(()=>import('./components/GoogleDriveView').then(m=>({default:m.GoogleDriveView})));
 const QuizView=lazy(()=>import('./components/QuizView').then(m=>({default:m.QuizView})));
 const FeedbackView=lazy(()=>import('./components/FeedbackView').then(m=>({default:m.FeedbackView})));
@@ -112,7 +111,6 @@ export default function App() {
   const [quizInitialAiFile, setQuizInitialAiFile] = useState<{ name: string; blob?: Blob } | null>(null);
   const [zaloPrefilledRecipient, setZaloPrefilledRecipient] = useState<Employee | null>(null);
   const [selectedEmpIdForPermission, setSelectedEmpIdForPermission] = useState<string | undefined>(undefined);
-  const [libraryInitialCategory, setLibraryInitialCategory] = useState<any>('ALL');
 
   const [internalDraft, setInternalDraft] = useState<InternalDraft | null>(null);
 
@@ -1616,10 +1614,6 @@ export default function App() {
               appSettings={appSettings}
               onSaveAppSettings={handleSaveAppSettings}
               setActiveTab={setActiveTab}
-              onNavigateToLibraryCategory={(category) => {
-                setLibraryInitialCategory(category);
-                setActiveTab('library');
-              }}
               onOpenMasterSync={() => setIsMasterSyncOpen(true)}
             />
           )}
@@ -1665,20 +1659,6 @@ export default function App() {
               appSettings={appSettings}
               onSaveAppSettings={handleSaveAppSettings}
               onNavigateToPermissions={() => setActiveTab('permissions')}
-            />
-          )}
-
-          {activeTab === 'library' && (
-            <LibraryView
-              documents={documents}
-              currentUser={currentUser}
-              initialCategory={libraryInitialCategory}
-              onClearInitialCategory={() => setLibraryInitialCategory('ALL')}
-              onAddDocument={handleAddDocument}
-              onEditDocument={handleEditDocument}
-              onDeleteDocument={handleDeleteDocument}
-              onBackToDashboard={() => setActiveTab('dashboard')}
-              onNavigateToViolations={() => setActiveTab('violations')}
             />
           )}
 

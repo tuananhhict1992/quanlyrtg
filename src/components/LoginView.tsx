@@ -18,6 +18,9 @@ import {
   Settings,
   Check,
   X,
+  Zap,
+  Bookmark,
+  Trash2,
 } from "lucide-react";
 import { canUserLogin } from "../utils/permissionUtils";
 
@@ -46,6 +49,89 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [showServerModal, setShowServerModal] = useState(false);
   const [serverUrlInput, setServerUrlInput] = useState(() => getApiBaseUrl());
   const [serverSavedSuccess, setServerSavedSuccess] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('rtg_remember_login') === 'true';
+  });
+  const [savedAccount, setSavedAccount] = useState<{ username: string; password?: string } | null>(() => {
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('rtg_saved_credentials') : null;
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (savedAccount && !usernameOrEmail && savedAccount.username) {
+      setUsernameOrEmail(savedAccount.username);
+      if (savedAccount.password) {
+        setPassword(savedAccount.password);
+      }
+    }
+  }, []);
+
+  const handleSaveCredentialsManually = () => {
+    const input = usernameOrEmail.trim();
+    const pass = password.trim();
+    if (!input || !pass) {
+      setError("Vui lòng điền tên đăng nhập và mật khẩu trước khi lưu.");
+      return;
+    }
+    localStorage.setItem('rtg_remember_login', 'true');
+    localStorage.setItem('rtg_saved_credentials', JSON.stringify({ username: input, password: pass }));
+    setSavedAccount({ username: input, password: pass });
+    setRememberMe(true);
+    setError(null);
+  };
+
+  const handleClearSavedAccount = () => {
+    localStorage.removeItem('rtg_saved_credentials');
+    localStorage.setItem('rtg_remember_login', 'false');
+    setSavedAccount(null);
+    setRememberMe(false);
+  };
+
+  const handleQuickLogin = async (savedUser?: string, savedPass?: string) => {
+    if (loading || loginRequest.current) return;
+    const u = (savedUser || usernameOrEmail).trim();
+    const p = (savedPass || password).trim();
+    if (!u || !p) {
+      setError("Không tìm thấy thông tin đăng nhập đã lưu.");
+      return;
+    }
+
+    setUsernameOrEmail(u);
+    setPassword(p);
+
+    const controller = new AbortController();
+    loginRequest.current = controller;
+    setWaitSeconds(0);
+    setCredentialWaiting(true);
+    setLoading(true);
+    setError(null);
+    if (onClearAuthError) onClearAuthError();
+
+    try {
+      await loginWithUsername(u, p, AbortSignal.any([controller.signal, AbortSignal.timeout(250_000)]));
+      localStorage.setItem('rtg_remember_login', 'true');
+      localStorage.setItem('rtg_saved_credentials', JSON.stringify({ username: u, password: p }));
+      setSavedAccount({ username: u, password: p });
+    } catch (err: any) {
+      if (!controller.signal.aborted) {
+        setError(
+          err.name === 'TimeoutError'
+            ? 'Hết thời gian chờ đăng nhập. Vui lòng thử lại sau.'
+            : err instanceof TypeError
+            ? 'Mất kết nối. Vui lòng kiểm tra mạng rồi thử đăng nhập lại.'
+            : err.message || "Đăng nhập thất bại."
+        );
+      }
+    } finally {
+      loginRequest.current = null;
+      setCredentialWaiting(false);
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -118,6 +204,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
     try {
       await loginWithUsername(input, password, AbortSignal.any([controller.signal, AbortSignal.timeout(250_000)]));
+      if (rememberMe) {
+        localStorage.setItem('rtg_remember_login', 'true');
+        localStorage.setItem('rtg_saved_credentials', JSON.stringify({ username: input, password: pass }));
+        setSavedAccount({ username: input, password: pass });
+      } else {
+        localStorage.removeItem('rtg_saved_credentials');
+        localStorage.setItem('rtg_remember_login', 'false');
+        setSavedAccount(null);
+      }
     } catch (err: any) {
       if (!controller.signal.aborted) setError(err.name === 'TimeoutError' ? 'Hết thời gian chờ đăng nhập. Vui lòng thử lại sau.' : err instanceof TypeError ? 'Mất kết nối. Vui lòng kiểm tra mạng rồi thử đăng nhập lại.' : err.message || "Đăng nhập thất bại.");
     } finally {
@@ -161,10 +256,49 @@ export const LoginView: React.FC<LoginViewProps> = ({
           <BrandLogo />
           <div className="hict-eyebrow">Điều hành RTG</div>
           <h2>Chào mừng trở lại</h2>
-          <p className="text-sm text-slate-500 leading-relaxed mb-8">
+          <p className="text-sm text-slate-500 leading-relaxed mb-6">
             Đăng nhập để tiếp tục công việc của bạn.
           </p>
-          <form className="space-y-5" onSubmit={handleCredentialSignIn}>
+
+          {/* Hộp Đăng nhập nhanh nếu đã lưu thông tin */}
+          {savedAccount && (
+            <div className="mb-5 p-3.5 rounded-2xl bg-gradient-to-r from-blue-50/90 to-sky-50 border border-blue-200 shadow-2xs space-y-2.5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                    <Zap size={15} className="fill-current text-amber-300" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-slate-900 truncate">
+                      {savedAccount.username}
+                    </div>
+                    <div className="text-[10px] text-slate-500">Đã lưu thông tin đăng nhập</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearSavedAccount}
+                  className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg transition-colors text-[11px] flex items-center gap-1 hover:bg-rose-50"
+                  title="Xóa tài khoản đã lưu khỏi trình duyệt"
+                >
+                  <Trash2 size={13} />
+                  <span>Xóa</span>
+                </button>
+              </div>
+              <button
+                type="button"
+                id="quick-login-btn"
+                disabled={loading}
+                onClick={() => handleQuickLogin(savedAccount.username, savedAccount.password)}
+                className="w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-2xs transition-all hover:scale-[1.01] active:scale-[0.99]"
+              >
+                {loading ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
+                <span>Đăng nhập nhanh với {savedAccount.username}</span>
+              </button>
+            </div>
+          )}
+
+          <form className="space-y-4" onSubmit={handleCredentialSignIn}>
             <div>
               <label htmlFor="username-or-email" className="block mb-2">
                 Tên đăng nhập
@@ -217,6 +351,43 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* Checkbox và Nút lưu thông tin đăng nhập */}
+            <div className="flex items-center justify-between gap-2 pt-1 text-xs">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-slate-600 hover:text-slate-900">
+                <input
+                  type="checkbox"
+                  id="remember-login-checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setRememberMe(checked);
+                    if (checked && usernameOrEmail.trim() && password.trim()) {
+                      localStorage.setItem('rtg_remember_login', 'true');
+                      localStorage.setItem('rtg_saved_credentials', JSON.stringify({ username: usernameOrEmail.trim(), password: password.trim() }));
+                      setSavedAccount({ username: usernameOrEmail.trim(), password: password.trim() });
+                    } else if (!checked) {
+                      handleClearSavedAccount();
+                    }
+                  }}
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                />
+                <span className="font-medium text-slate-700">Lưu thông tin đăng nhập</span>
+              </label>
+
+              {usernameOrEmail && password && (
+                <button
+                  type="button"
+                  onClick={handleSaveCredentialsManually}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
+                  title="Lưu ngay tên đăng nhập và mật khẩu vào thiết bị để đăng nhập nhanh lần sau"
+                >
+                  <Bookmark size={12} />
+                  <span>Lưu thông tin</span>
+                </button>
+              )}
+            </div>
+
             {error && (
               <div
                 role="alert"
