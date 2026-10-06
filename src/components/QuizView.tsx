@@ -37,6 +37,9 @@ import {
   Lock,
   X,
   BarChart3,
+  SlidersHorizontal,
+  Layers,
+  ListFilter,
 } from 'lucide-react';
 import { Quiz, QuizQuestion, QuestionFolder, QuizSubmission, Employee, AppSettings } from '../types';
 import { AiQuestionImportModal } from './AiQuestionImportModal';
@@ -232,7 +235,15 @@ export const QuizView: React.FC<QuizViewProps> = ({
   const [newQuizPassScore, setNewQuizPassScore] = useState(80);
   const [newQuizMaxAttempts, setNewQuizMaxAttempts] = useState<number>(1);
   const [newQuizQuestions, setNewQuizQuestions] = useState<Omit<QuizQuestion, 'id'>[]>([]);
-  const [createQuizFolderFilter, setCreateQuizFolderFilter] = useState<string>('all');
+  
+  // Multi-folder exam creation state
+  const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
+  const [createQuizActiveFolderTab, setCreateQuizActiveFolderTab] = useState<string>('all');
+  const [createQuizSearch, setCreateQuizSearch] = useState<string>('');
+  const [createQuizReviewMode, setCreateQuizReviewMode] = useState<'SELECT' | 'REVIEW'>('SELECT');
+  const [showFolderMatrix, setShowFolderMatrix] = useState<boolean>(false);
+  const [folderQuotas, setFolderQuotas] = useState<Record<string, number>>({});
+  const hasInitializedFoldersRef = useRef<boolean>(false);
   
   // Hẹn giờ phát đề, kết thúc kiểm tra & câu hỏi ngẫu nhiên
   const [newQuizScheduledStart, setNewQuizScheduledStart] = useState<string>('');
@@ -371,39 +382,225 @@ export const QuizView: React.FC<QuizViewProps> = ({
     setActiveTab('TAKE');
   };
 
-  // Tự động chọn ngẫu nhiên N câu hỏi từ ngân hàng
-  const handleAutoPickRandomQuestions = () => {
-    const filtered = questionBank.filter((q) => {
-      if (createQuizFolderFilter !== 'all') {
-        return q.folderId === createQuizFolderFilter;
+  // Danh sách các thư mục khả dụng (kèm thư mục Chưa phân loại nếu có)
+  const availableQuestionFolders = React.useMemo(() => {
+    const list = questionFolders.map((f) => ({
+      id: f.id,
+      name: f.name,
+      description: f.description,
+      color: f.color || 'indigo',
+      count: questionBank.filter((q) => q.folderId === f.id).length,
+    }));
+    const uncatCount = questionBank.filter(
+      (q) => !q.folderId || !questionFolders.some((f) => f.id === q.folderId)
+    ).length;
+    if (uncatCount > 0) {
+      list.push({
+        id: 'uncategorized',
+        name: 'Chưa phân loại',
+        description: 'Câu hỏi chưa được gán vào thư mục nào',
+        color: 'slate',
+        count: uncatCount,
+      });
+    }
+    return list;
+  }, [questionFolders, questionBank]);
+
+  // Khởi tạo mặc định chọn tất cả thư mục khả dụng
+  useEffect(() => {
+    if (!hasInitializedFoldersRef.current && availableQuestionFolders.length > 0) {
+      setSelectedFolderIds(availableQuestionFolders.map((f) => f.id));
+      hasInitializedFoldersRef.current = true;
+    }
+  }, [availableQuestionFolders]);
+
+  // Lấy ID thư mục chuẩn của câu hỏi
+  const getQuestionFolderId = (q: { folderId?: string }) => {
+    if (!q.folderId || !questionFolders.some((f) => f.id === q.folderId)) {
+      return 'uncategorized';
+    }
+    return q.folderId;
+  };
+
+  // Lấy tên thư mục chuẩn của câu hỏi
+  const getQuestionFolderName = (q: { folderId?: string }) => {
+    const fId = getQuestionFolderId(q);
+    if (fId === 'uncategorized') return 'Chưa phân loại';
+    return questionFolders.find((f) => f.id === fId)?.name || 'Chưa phân loại';
+  };
+
+  // Bật/tắt chọn một thư mục
+  const handleToggleFolder = (folderId: string) => {
+    setSelectedFolderIds((prev) =>
+      prev.includes(folderId) ? prev.filter((id) => id !== folderId) : [...prev, folderId]
+    );
+  };
+
+  const handleSelectAllFolders = () => {
+    setSelectedFolderIds(availableQuestionFolders.map((f) => f.id));
+  };
+
+  const handleDeselectAllFolders = () => {
+    setSelectedFolderIds([]);
+  };
+
+  // Thống kê phân bổ câu hỏi trong đề thi hiện tại theo từng thư mục
+  const selectedQuestionsSummary = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    newQuizQuestions.forEach((q) => {
+      const fId = getQuestionFolderId(q);
+      map[fId] = (map[fId] || 0) + 1;
+    });
+    return map;
+  }, [newQuizQuestions, questionFolders]);
+
+  // Danh sách câu hỏi lọc theo các thư mục đã chọn & tìm kiếm
+  const filteredQuestionBank = React.useMemo(() => {
+    return questionBank.filter((q) => {
+      const fId = getQuestionFolderId(q);
+      if (!selectedFolderIds.includes(fId)) return false;
+      if (createQuizActiveFolderTab !== 'all' && fId !== createQuizActiveFolderTab) return false;
+      if (createQuizSearch.trim()) {
+        const query = createQuizSearch.toLowerCase();
+        const inQuestion = q.question.toLowerCase().includes(query);
+        const inCitation = q.citation?.toLowerCase().includes(query);
+        const inOptions = q.options.some((o) => o.text.toLowerCase().includes(query));
+        if (!inQuestion && !inCitation && !inOptions) return false;
       }
       return true;
     });
+  }, [questionBank, selectedFolderIds, createQuizActiveFolderTab, createQuizSearch, questionFolders]);
 
-    if (filtered.length === 0) {
-      alert('Không có câu hỏi nào trong chủ đề hiện tại để chọn.');
+  // Tự động bốc ngẫu nhiên tổng hợp từ tất cả các thư mục đã chọn
+  const handleAutoPickRandomQuestions = (mode: 'replace' | 'append' = 'replace') => {
+    const pool = questionBank.filter((q) => {
+      const fId = getQuestionFolderId(q);
+      return selectedFolderIds.includes(fId);
+    });
+
+    if (pool.length === 0) {
+      alert('Không có câu hỏi nào trong các thư mục đang chọn. Vui lòng chọn ít nhất 1 thư mục có câu hỏi.');
       return;
     }
 
-    const count = Math.min(Math.max(1, autoPickCount), filtered.length);
-    const shuffled = [...filtered].sort(() => Math.random() - 0.5);
-    const picked = shuffled.slice(0, count);
-
-    setNewQuizQuestions(picked);
-  };
-
-  const handleSelectAllFilteredQuestions = () => {
-    const filtered = questionBank.filter((q) => {
-      if (createQuizFolderFilter !== 'all') {
-        return q.folderId === createQuizFolderFilter;
+    if (mode === 'replace') {
+      const count = Math.min(Math.max(1, autoPickCount), pool.length);
+      const shuffled = [...pool].sort(() => Math.random() - 0.5);
+      const picked = shuffled.slice(0, count);
+      setNewQuizQuestions(picked);
+    } else {
+      const existingKeys = new Set(newQuizQuestions.map((q) => q.question));
+      const availableToPick = pool.filter((q) => !existingKeys.has(q.question));
+      if (availableToPick.length === 0) {
+        alert('Tất cả câu hỏi trong các thư mục đã chọn đều đã có trong đề thi!');
+        return;
       }
-      return true;
-    });
-    setNewQuizQuestions(filtered);
+      const count = Math.min(Math.max(1, autoPickCount), availableToPick.length);
+      const shuffled = [...availableToPick].sort(() => Math.random() - 0.5);
+      const picked = shuffled.slice(0, count);
+      setNewQuizQuestions((prev) => [...prev, ...picked]);
+    }
   };
 
+  // Bốc ngẫu nhiên theo ma trận phân bổ từng thư mục
+  const handlePickByFolderMatrix = (mode: 'replace' | 'append' = 'replace') => {
+    if (selectedFolderIds.length === 0) {
+      alert('Vui lòng chọn ít nhất 1 thư mục để bốc đề.');
+      return;
+    }
+
+    let combinedPicked: QuizQuestion[] = [];
+    let summaryDetails: string[] = [];
+    const existingKeys = mode === 'append' ? new Set(newQuizQuestions.map((q) => q.question)) : new Set<string>();
+
+    for (const fId of selectedFolderIds) {
+      const folderObj = availableQuestionFolders.find((f) => f.id === fId);
+      const quota = folderQuotas[fId] ?? Math.min(5, folderObj?.count || 0);
+      if (quota <= 0) continue;
+
+      const folderPool = questionBank.filter((q) => {
+        const qFId = getQuestionFolderId(q);
+        return qFId === fId && !existingKeys.has(q.question);
+      });
+
+      if (folderPool.length === 0) continue;
+
+      const count = Math.min(quota, folderPool.length);
+      const shuffled = [...folderPool].sort(() => Math.random() - 0.5);
+      const picked = shuffled.slice(0, count);
+      combinedPicked.push(...picked);
+      picked.forEach((p) => existingKeys.add(p.question));
+
+      const fName = folderObj?.name || 'Thư mục';
+      summaryDetails.push(`• ${fName}: ${count} câu`);
+    }
+
+    if (combinedPicked.length === 0) {
+      alert('Vui lòng nhập số câu cần lấy (> 0) cho ít nhất 1 thư mục trong bảng ma trận.');
+      return;
+    }
+
+    if (mode === 'replace') {
+      setNewQuizQuestions(combinedPicked);
+    } else {
+      setNewQuizQuestions((prev) => [...prev, ...combinedPicked]);
+    }
+  };
+
+  // Chọn tất cả câu hỏi đang hiển thị (cộng dồn không trùng lặp)
+  const handleSelectAllFilteredQuestions = () => {
+    if (filteredQuestionBank.length === 0) return;
+    setNewQuizQuestions((prev) => {
+      const existingKeys = new Set(prev.map((q) => q.question));
+      const toAdd = filteredQuestionBank.filter((q) => !existingKeys.has(q.question));
+      return [...prev, ...toAdd];
+    });
+  };
+
+  // Bỏ chọn các câu hỏi đang hiển thị khỏi đề
+  const handleDeselectFilteredQuestions = () => {
+    if (filteredQuestionBank.length === 0) return;
+    const filterKeys = new Set(filteredQuestionBank.map((q) => q.question));
+    setNewQuizQuestions((prev) => prev.filter((q) => !filterKeys.has(q.question)));
+  };
+
+  // Bỏ chọn toàn bộ câu hỏi trong đề
   const handleDeselectAllQuestions = () => {
-    setNewQuizQuestions([]);
+    if (newQuizQuestions.length > 0 && window.confirm('Bỏ chọn tất cả câu hỏi đang có trong đề thi này?')) {
+      setNewQuizQuestions([]);
+    }
+  };
+
+  // Bốc ngẫu nhiên riêng cho 1 thư mục và thêm vào đề
+  const handlePickSingleFolder = (folderId: string, count: number) => {
+    const existingKeys = new Set(newQuizQuestions.map((q) => q.question));
+    const pool = questionBank.filter((q) => {
+      const qFId = getQuestionFolderId(q);
+      return qFId === folderId && !existingKeys.has(q.question);
+    });
+    if (pool.length === 0) {
+      alert('Không còn câu hỏi khả dụng chưa thêm trong thư mục này!');
+      return;
+    }
+    const safeCount = Math.min(Math.max(1, count), pool.length);
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    const picked = shuffled.slice(0, safeCount);
+    setNewQuizQuestions((prev) => [...prev, ...picked]);
+  };
+
+  // Thêm tất cả câu hỏi của 1 thư mục vào đề
+  const handleAddAllQuestionsFromFolder = (folderId: string) => {
+    const folderPool = questionBank.filter((q) => getQuestionFolderId(q) === folderId);
+    setNewQuizQuestions((prev) => {
+      const existingKeys = new Set(prev.map((q) => q.question));
+      const toAdd = folderPool.filter((q) => !existingKeys.has(q.question));
+      return [...prev, ...toAdd];
+    });
+  };
+
+  // Bỏ tất cả câu hỏi thuộc 1 thư mục ra khỏi đề
+  const handleRemoveQuestionsFromFolder = (folderId: string) => {
+    setNewQuizQuestions((prev) => prev.filter((q) => getQuestionFolderId(q) !== folderId));
   };
 
   const handleSelectOption = (questionId: string, optionId: string) => {
@@ -478,6 +675,8 @@ export const QuizView: React.FC<QuizViewProps> = ({
     setNewQuizIsRandom(false);
     setNewQuizRandomCount(10);
     setNewQuizMaxAttempts(1);
+    setCreateQuizSearch('');
+    setCreateQuizReviewMode('SELECT');
     } catch (error) {
       setQuizActionError((error as Error).message);
     } finally {
@@ -1551,127 +1750,583 @@ export const QuizView: React.FC<QuizViewProps> = ({
               )}
             </div>
 
-            <div className="pt-4 border-t border-slate-100">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
+            <div className="pt-5 border-t border-slate-100 space-y-4">
+              {/* Header: Title + Mode Toggle (Tabs) */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
                 <div>
-                  <h4 className="font-bold text-slate-800 text-sm">
-                    Chọn câu hỏi từ Ngân hàng ({newQuizQuestions.length} đã chọn)
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Chọn câu hỏi cụ thể hoặc dùng công cụ chọn ngẫu nhiên bên dưới
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-indigo-600" />
+                      <span>Chọn câu hỏi cho đề thi</span>
+                    </h4>
+                    <span
+                      className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${
+                        newQuizQuestions.length > 0
+                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}
+                    >
+                      {newQuizQuestions.length} câu đã chọn
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Chọn câu hỏi linh hoạt từ nhiều thư mục khác nhau hoặc dùng công cụ tự động phân bổ câu hỏi
                   </p>
                 </div>
 
-                {/* Bộ lọc chủ đề */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500 font-medium">Chủ đề:</span>
-                  <select
-                    value={createQuizFolderFilter}
-                    onChange={(e) => setCreateQuizFolderFilter(e.target.value)}
-                    className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg bg-white font-medium"
-                  >
-                    <option value="all">Tất cả chủ đề ({questionBank.length})</option>
-                    {questionFolders.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        📁 {f.name} ({questionBank.filter((q) => q.folderId === f.id).length})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Thanh công cụ Tự động chọn ngẫu nhiên & Chọn tất cả */}
-              <div className="mb-3 p-3 rounded-xl bg-indigo-50/70 border border-indigo-100 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-semibold text-slate-700">Bốc ngẫu nhiên:</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={autoPickCount}
-                    onChange={(e) => setAutoPickCount(Math.max(1, Number(e.target.value)))}
-                    className="w-16 px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-bold text-center"
-                  />
-                  <span className="text-xs text-slate-600">câu</span>
+                {/* Switch between Bank and Review selected questions */}
+                <div className="flex items-center bg-slate-100 p-1 rounded-xl self-start sm:self-auto border border-slate-200">
                   <button
                     type="button"
-                    onClick={handleAutoPickRandomQuestions}
-                    className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs"
+                    onClick={() => setCreateQuizReviewMode('SELECT')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      createQuizReviewMode === 'SELECT'
+                        ? 'bg-white text-indigo-700 shadow-2xs font-black'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
                   >
-                    <Shuffle className="w-3.5 h-3.5" />
-                    <span>🎲 Tự động chọn ngẫu nhiên {autoPickCount} câu</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSelectAllFilteredQuestions}
-                    disabled={questionBank.length===0}
-                    className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold transition-all flex items-center gap-1"
-                  >
-                    <CheckSquare className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Chọn tất cả ({createQuizFolderFilter === 'all' ? questionBank.length : questionBank.filter(q => q.folderId === createQuizFolderFilter).length})</span>
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>Ngân hàng câu hỏi</span>
                   </button>
                   <button
                     type="button"
-                    onClick={handleDeselectAllQuestions}
-                    className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-xs font-semibold transition-all flex items-center gap-1"
+                    onClick={() => setCreateQuizReviewMode('REVIEW')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      createQuizReviewMode === 'REVIEW'
+                        ? 'bg-white text-indigo-700 shadow-2xs font-black'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
                   >
-                    <Square className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Bỏ chọn hết</span>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Đề thi đã chọn ({newQuizQuestions.length})</span>
                   </button>
                 </div>
               </div>
 
-              <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-                {questionBank
-                  .filter((q) => {
-                    if (createQuizFolderFilter !== 'all') {
-                      return q.folderId === createQuizFolderFilter;
-                    }
-                    return true;
-                  })
-                  .map((q) => {
-                  const isSelected = newQuizQuestions.some(nq => nq.question === q.question);
-                  const folder = questionFolders.find((f) => f.id === q.folderId);
-                  return (
-                    <label key={q.id} className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-all ${isSelected ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
-                      <input
-                        type="checkbox"
-                        className="mt-1"
-                        checked={isSelected}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setNewQuizQuestions([...newQuizQuestions, q]);
-                          } else {
-                            setNewQuizQuestions(newQuizQuestions.filter(nq => nq.question !== q.question));
-                          }
-                        }}
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-sm font-semibold text-slate-800">{q.question}</p>
-                          {folder && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-medium">
-                              {folder.name}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-slate-600 space-y-1">
-                          {q.options.map((opt, i) => (
-                            <p key={opt.id} className={q.correctOptionId === opt.id ? 'text-indigo-700 font-medium' : ''}>
-                              {String.fromCharCode(65 + i)}. {opt.text}
-                            </p>
-                          ))}
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })}
-                {questionBank.length === 0 && (
-                  <p className="text-sm text-slate-500 italic">Ngân hàng câu hỏi đang trống. Vui lòng thêm câu hỏi ở tab "Ngân hàng câu hỏi".</p>
+              {/* KHU VỰC 1: BỘ CHỌN NHIỀU THƯ MỤC NGUỒN */}
+              <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Folder className="w-4 h-4 text-indigo-600" />
+                    <span className="text-xs font-bold text-slate-800">
+                      Chọn các thư mục nguồn lấy câu hỏi (Đang chọn {selectedFolderIds.length}/{availableQuestionFolders.length} thư mục):
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleSelectAllFolders}
+                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                    >
+                      <CheckSquare className="w-3 h-3 text-indigo-600" />
+                      <span>Chọn tất cả thư mục</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeselectAllFolders}
+                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <Square className="w-3 h-3 text-slate-400" />
+                      <span>Bỏ chọn hết</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Danh sách các thư mục dưới dạng chips checkbox */}
+                <div className="flex flex-wrap gap-2 pt-0.5">
+                  {availableQuestionFolders.map((folder) => {
+                    const isChecked = selectedFolderIds.includes(folder.id);
+                    const countInQuiz = selectedQuestionsSummary[folder.id] || 0;
+                    return (
+                      <button
+                        key={folder.id}
+                        type="button"
+                        onClick={() => handleToggleFolder(folder.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-2 cursor-pointer ${
+                          isChecked
+                            ? 'bg-white text-indigo-950 border-indigo-500 shadow-xs ring-1 ring-indigo-500/30'
+                            : 'bg-white/70 text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`w-4 h-4 rounded flex items-center justify-center border text-[10px] font-bold ${
+                            isChecked
+                              ? 'bg-indigo-600 border-indigo-600 text-white'
+                              : 'border-slate-300 bg-white text-transparent'
+                          }`}
+                        >
+                          ✓
+                        </span>
+                        <span>📁 {folder.name}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                            isChecked ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {folder.count} câu
+                        </span>
+                        {countInQuiz > 0 && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200"
+                            title="Số câu đã đưa vào đề từ thư mục này"
+                          >
+                            +{countInQuiz} trong đề
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {selectedFolderIds.length === 0 && (
+                  <p className="text-xs text-amber-700 bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-600" />
+                    <span>Chưa chọn thư mục nào! Hãy tích chọn ít nhất 1 thư mục ở trên để lấy câu hỏi vào đề thi.</span>
+                  </p>
                 )}
               </div>
+
+              {/* KHU VỰC 2: CÔNG CỤ BỐC ĐỀ THÔNG MINH (BỐC NHANH & MA TRẬN PHÂN BỔ) */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  {/* Bốc nhanh tổng hợp */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Shuffle className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Bốc nhanh từ các thư mục đã chọn:</span>
+                    </span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={autoPickCount}
+                      onChange={(e) => setAutoPickCount(Math.max(1, Number(e.target.value)))}
+                      className="w-16 px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-center"
+                    />
+                    <span className="text-xs text-slate-600">câu</span>
+                    <button
+                      type="button"
+                      onClick={() => handleAutoPickRandomQuestions('replace')}
+                      className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      title="Tạo mới đề thi với số câu bốc ngẫu nhiên từ các thư mục đã chọn"
+                    >
+                      <Shuffle className="w-3.5 h-3.5" />
+                      <span>🎲 Bốc mới {autoPickCount} câu</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAutoPickRandomQuestions('append')}
+                      className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                      title="Bốc thêm ngẫu nhiên câu hỏi chưa có trong đề và cộng dồn"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Bốc thêm</span>
+                    </button>
+                  </div>
+
+                  {/* Nút bật/tắt ma trận phân bổ */}
+                  <button
+                    type="button"
+                    onClick={() => setShowFolderMatrix(!showFolderMatrix)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
+                      showFolderMatrix
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    <span>{showFolderMatrix ? '▲ Thu gọn Ma trận thư mục' : '⚙️ Phân bổ số câu theo từng thư mục (Ma trận)'}</span>
+                  </button>
+                </div>
+
+                {/* Bảng cấu hình Ma trận phân bổ câu hỏi theo từng thư mục */}
+                {showFolderMatrix && (
+                  <div className="pt-3 border-t border-slate-200 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                      <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Cấu hình số câu lấy từ từng thư mục đã chọn:</span>
+                      </h5>
+                      <span className="text-[11px] text-slate-500">
+                        Nhập số câu muốn lấy cho mỗi thư mục rồi bấm nút bốc đề bên dưới
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto pr-1">
+                      {availableQuestionFolders
+                        .filter((f) => selectedFolderIds.includes(f.id))
+                        .map((folder) => {
+                          const quota = folderQuotas[folder.id] ?? Math.min(5, folder.count);
+                          const countInQuiz = selectedQuestionsSummary[folder.id] || 0;
+                          return (
+                            <div
+                              key={folder.id}
+                              className="p-2.5 rounded-xl bg-white border border-slate-200 flex flex-col justify-between gap-2 shadow-2xs"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-800 truncate" title={folder.name}>
+                                  📁 {folder.name}
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-semibold bg-slate-100 px-1.5 py-0.5 rounded">
+                                  Kho: {folder.count} câu
+                                </span>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[11px] text-slate-600 font-medium">Lấy:</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={folder.count}
+                                    value={quota}
+                                    onChange={(e) => {
+                                      const val = Math.max(0, Math.min(folder.count, Number(e.target.value)));
+                                      setFolderQuotas((prev) => ({ ...prev, [folder.id]: val }));
+                                    }}
+                                    className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded-lg text-center font-bold text-indigo-700 bg-slate-50 focus:bg-white"
+                                  />
+                                  <span className="text-[11px] text-slate-500">câu</span>
+                                </div>
+                                <div className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                  Trong đề: {countInQuiz}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1 pt-1 border-t border-slate-100 text-[10px]">
+                                <button
+                                  type="button"
+                                  onClick={() => handlePickSingleFolder(folder.id, quota)}
+                                  disabled={folder.count === 0 || quota <= 0}
+                                  className="flex-1 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition-colors cursor-pointer text-center disabled:opacity-40"
+                                  title={`Bốc ngẫu nhiên ${quota} câu từ thư mục này thêm vào đề`}
+                                >
+                                  🎲 Bốc {quota} câu
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddAllQuestionsFromFolder(folder.id)}
+                                  disabled={folder.count === 0}
+                                  className="py-1 px-2 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors cursor-pointer disabled:opacity-40"
+                                  title="Thêm tất cả câu hỏi của thư mục này vào đề"
+                                >
+                                  Chọn hết
+                                </button>
+                                {countInQuiz > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveQuestionsFromFolder(folder.id)}
+                                    className="py-1 px-1.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold transition-colors cursor-pointer"
+                                    title="Gỡ tất cả câu của thư mục này khỏi đề"
+                                  >
+                                    ✕ Gỡ
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    {/* Dòng tổng kết Ma trận */}
+                    <div className="pt-2 flex flex-wrap items-center justify-between gap-2 bg-indigo-50/70 p-2.5 rounded-xl border border-indigo-100">
+                      <div className="text-xs text-slate-700 font-medium">
+                        Tổng số câu theo cấu hình ma trận:{' '}
+                        <b className="text-indigo-700 font-black text-sm">
+                          {selectedFolderIds.reduce((acc, fId) => {
+                            const folderObj = availableQuestionFolders.find((f) => f.id === fId);
+                            const q = folderQuotas[fId] ?? Math.min(5, folderObj?.count || 0);
+                            return acc + q;
+                          }, 0)}{' '}
+                          câu
+                        </b>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handlePickByFolderMatrix('replace')}
+                          className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Shuffle className="w-3.5 h-3.5" />
+                          <span>🎲 Tạo mới đề theo ma trận</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePickByFolderMatrix('append')}
+                          className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-indigo-200 text-indigo-700 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Bốc thêm theo ma trận</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* KHU VỰC 3: THANH TÓM TẮT PHÂN BỔ CÂU HỎI TRONG ĐỀ THI */}
+              {newQuizQuestions.length > 0 && (
+                <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-emerald-900 flex items-center gap-1">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>Đề thi hiện có <b>{newQuizQuestions.length} câu hỏi</b> phân bổ từ:</span>
+                    </span>
+                    {availableQuestionFolders
+                      .filter((f) => (selectedQuestionsSummary[f.id] || 0) > 0)
+                      .map((f) => (
+                        <span
+                          key={f.id}
+                          className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white text-emerald-800 border border-emerald-300 shadow-2xs flex items-center gap-1"
+                        >
+                          <span>📁 {f.name}:</span>
+                          <span className="text-emerald-600">{selectedQuestionsSummary[f.id]} câu</span>
+                        </span>
+                      ))}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {createQuizReviewMode === 'SELECT' && (
+                      <button
+                        type="button"
+                        onClick={() => setCreateQuizReviewMode('REVIEW')}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                      >
+                        <span>Xem chi tiết các câu đã chọn ({newQuizQuestions.length}) →</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleDeselectAllQuestions}
+                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                      title="Bỏ chọn tất cả câu hỏi trong đề"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Xóa toàn bộ đề</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* KHU VỰC 4: DANH SÁCH CÂU HỎI (2 CHẾ ĐỘ XEM: NGÂN HÀNG vs XEM LẠI ĐỀ) */}
+              {createQuizReviewMode === 'SELECT' ? (
+                <div className="space-y-3">
+                  {/* Thanh công cụ lọc & tìm kiếm */}
+                  <div className="p-3 rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                    <div className="flex items-center gap-2 flex-wrap flex-1">
+                      {/* Lọc xem theo thư mục cụ thể */}
+                      <div className="flex items-center gap-1.5">
+                        <ListFilter className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="text-xs text-slate-500 font-medium">Lọc xem:</span>
+                        <select
+                          value={createQuizActiveFolderTab}
+                          onChange={(e) => setCreateQuizActiveFolderTab(e.target.value)}
+                          className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg bg-white font-medium text-slate-800"
+                        >
+                          <option value="all">
+                            Tất cả thư mục đang chọn ({availableQuestionFolders.filter(f => selectedFolderIds.includes(f.id)).reduce((acc, f) => acc + f.count, 0)} câu)
+                          </option>
+                          {availableQuestionFolders
+                            .filter((f) => selectedFolderIds.includes(f.id))
+                            .map((f) => (
+                              <option key={f.id} value={f.id}>
+                                📁 {f.name} ({f.count} câu)
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      {/* Ô tìm kiếm câu hỏi */}
+                      <div className="relative flex-1 min-w-[180px]">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+                        <input
+                          type="text"
+                          value={createQuizSearch}
+                          onChange={(e) => setCreateQuizSearch(e.target.value)}
+                          placeholder="Tìm từ khóa câu hỏi, nội dung..."
+                          className="w-full pl-8 pr-2.5 py-1 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Nút Chọn / Bỏ chọn nhanh câu hỏi đang hiển thị */}
+                    <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={handleSelectAllFilteredQuestions}
+                        disabled={filteredQuestionBank.length === 0}
+                        className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold transition-all flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+                        title="Thêm tất cả các câu hỏi đang hiển thị vào đề thi (cộng dồn không trùng)"
+                      >
+                        <CheckSquare className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Chọn tất cả ({filteredQuestionBank.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeselectFilteredQuestions}
+                        disabled={filteredQuestionBank.length === 0}
+                        className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-xs font-semibold transition-all flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+                        title="Bỏ chọn các câu hỏi đang hiển thị khỏi đề thi"
+                      >
+                        <Square className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Bỏ chọn</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Danh sách các câu hỏi trong ngân hàng */}
+                  <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                    {filteredQuestionBank.map((q) => {
+                      const isSelected = newQuizQuestions.some((nq) => nq.question === q.question);
+                      const folderName = getQuestionFolderName(q);
+                      return (
+                        <label
+                          key={q.id}
+                          className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-all ${
+                            isSelected ? 'bg-indigo-50 border-indigo-200 shadow-2xs' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1 w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setNewQuizQuestions([...newQuizQuestions, q]);
+                              } else {
+                                setNewQuizQuestions(newQuizQuestions.filter((nq) => nq.question !== q.question));
+                              }
+                            }}
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <p className="text-sm font-semibold text-slate-800">{q.question}</p>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-medium">
+                                📁 {folderName}
+                              </span>
+                              {isSelected && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-bold">
+                                  ✓ Đã thêm vào đề
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-slate-600 space-y-1">
+                              {q.options.map((opt, i) => (
+                                <p
+                                  key={opt.id}
+                                  className={
+                                    q.correctOptionId === opt.id
+                                      ? 'text-indigo-700 font-bold bg-indigo-50/60 px-1.5 py-0.5 rounded inline-block mr-2'
+                                      : ''
+                                  }
+                                >
+                                  {String.fromCharCode(65 + i)}. {opt.text}
+                                </p>
+                              ))}
+                            </div>
+                            {q.citation && (
+                              <p className="text-[10px] text-slate-400 mt-1 italic">
+                                Trích dẫn: {q.citation}
+                              </p>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
+
+                    {filteredQuestionBank.length === 0 && (
+                      <div className="text-center py-8 bg-slate-50 rounded-2xl border border-slate-200">
+                        <Folder className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-xs text-slate-500 font-semibold">
+                          Không có câu hỏi nào khớp với các thư mục hoặc từ khóa tìm kiếm đã chọn.
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Hãy kiểm tra lại danh sách các thư mục được chọn ở trên hoặc thử tìm kiếm với từ khóa khác.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* CHẾ ĐỘ XEM LẠI CÁC CÂU ĐÃ CHỌN TRONG ĐỀ THI */
+                <div className="space-y-3">
+                  <div className="p-3 rounded-2xl bg-white border border-slate-200 flex items-center justify-between shadow-2xs">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span className="text-xs font-bold text-slate-800">
+                        Danh sách các câu hỏi hiện có trong đề thi ({newQuizQuestions.length} câu)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCreateQuizReviewMode('SELECT')}
+                      className="px-3 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Chọn thêm từ Ngân hàng</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                    {newQuizQuestions.map((q, idx) => {
+                      const folderName = getQuestionFolderName(q);
+                      return (
+                        <div
+                          key={`selected-${idx}-${q.question.slice(0, 10)}`}
+                          className="flex items-start justify-between gap-3 p-3.5 border border-indigo-100 bg-indigo-50/30 rounded-xl"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <span className="text-xs font-black text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-md">
+                                Câu {idx + 1}
+                              </span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-medium">
+                                📁 {folderName}
+                              </span>
+                              <p className="text-sm font-semibold text-slate-800">{q.question}</p>
+                            </div>
+                            <div className="text-xs text-slate-600 space-y-1 mt-2">
+                              {q.options.map((opt, i) => (
+                                <p
+                                  key={opt.id}
+                                  className={
+                                    q.correctOptionId === opt.id
+                                      ? 'text-indigo-700 font-bold bg-indigo-100/70 px-1.5 py-0.5 rounded inline-block mr-2'
+                                      : ''
+                                  }
+                                >
+                                  {String.fromCharCode(65 + i)}. {opt.text}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setNewQuizQuestions(newQuizQuestions.filter((_, i) => i !== idx))}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex-shrink-0"
+                            title="Gỡ câu hỏi này khỏi đề thi"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    {newQuizQuestions.length === 0 && (
+                      <div className="text-center py-8 bg-slate-50 rounded-2xl border border-slate-200">
+                        <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-xs text-slate-500 font-semibold">Đề thi hiện chưa có câu hỏi nào.</p>
+                        <button
+                          type="button"
+                          onClick={() => setCreateQuizReviewMode('SELECT')}
+                          className="mt-2 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors cursor-pointer"
+                        >
+                          Quay lại Ngân hàng để chọn câu hỏi
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {quizActionError && !showAssignModal && <p role="alert" className="text-sm text-red-600">{quizActionError}</p>}
