@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   ExternalLink,
   Smartphone,
-  Download,
   Server,
   Settings,
   Check,
@@ -479,16 +478,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <span>Cài đặt ứng dụng vào điện thoại (PWA)</span>
             </button>
           )}
-          <a
-            href="https://github.com/tuananhhict1992/quanlyrtg/releases"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2.5 w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold transition-colors shadow-2xs"
-            title="Tải tệp cài đặt APK cho điện thoại Android từ GitHub Releases"
-          >
-            <Download size={13} className="text-emerald-600 shrink-0" />
-            <span>Tải ứng dụng Android (.APK)</span>
-          </a>
           <button
             type="button"
             onClick={() => setShowServerModal(true)}
