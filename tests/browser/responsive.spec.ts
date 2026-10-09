@@ -570,17 +570,17 @@ test('Quiz assignment waits for saved quiz, keeps errors visible, and blocks rep
   await page.getByRole('button',{name:/Chọn tất cả/}).click();
   await page.getByRole('button',{name:'Lưu & Giao bài',exact:true}).click();
   await expect(page.getByRole('alert')).toContainText('Lưu đề thất bại giả lập');
-  await expect(page.getByRole('heading',{name:'Giao bài & Thông báo',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Giao bài thi',exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'Lưu & Giao bài',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Giao bài & Thông báo',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Giao bài & Gửi thông báo',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Giao bài thi',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Xác nhận giao bài',exact:true}).click();
   await expect(page.getByRole('alert')).toContainText('Giao bài thất bại giả lập');
-  await page.getByRole('button',{name:'Giao bài & Gửi thông báo',exact:true}).click();
+  await page.getByRole('button',{name:'Xác nhận giao bài',exact:true}).click();
   await expect(page.getByRole('button',{name:'Đang giao bài...',exact:true})).toBeDisabled();
   expect(assignCalls).toBe(2);
   releaseAssign();
-  await expect(page.getByRole('heading',{name:'Giao bài & Thông báo',exact:true})).toHaveCount(0);
-  await expect(page.getByText('Đã gửi 76 thông báo giao bài trong app.',{exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Giao bài thi',exact:true})).toHaveCount(0);
+  await expect(page.getByText('Đã giao bài thi thành công cho 76 nhân sự.',{exact:true})).toBeVisible();
   expect(errors).toEqual([]);
 });
 

@@ -71,7 +71,8 @@ export const examsRouter = Router();
 examsRouter.post(
   "/:id/assign",
   asyncRoute(async (req, res) => {
-    res.json(await assignQuiz(req.user, req.params.id, req.body.recipientIds));
+    const notify = req.body && typeof req.body === "object" && "notify" in req.body ? Boolean(req.body.notify) : false;
+    res.json(await assignQuiz(req.user, req.params.id, req.body.recipientIds, notify));
   }),
 );
 examsRouter.post(

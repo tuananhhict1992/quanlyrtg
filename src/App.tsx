@@ -959,14 +959,16 @@ export default function App() {
     try {
       const result = await api<{sentCount:number;alreadyAssignedCount:number;messages:ZaloMessage[]}>(
         '/exams/' + encodeURIComponent(quizId) + '/assign',
-        {method:'POST',body:JSON.stringify({recipientIds})}
+        {method:'POST',body:JSON.stringify({recipientIds, notify: false})}
       );
-      setZaloMessages(prev => {
-        const ids = new Set(result.messages.map(m => m.id));
-        return [...result.messages, ...prev.filter(m => !ids.has(m.id))];
-      });
+      if (result.messages && result.messages.length > 0) {
+        setZaloMessages(prev => {
+          const ids = new Set(result.messages.map(m => m.id));
+          return [...result.messages, ...prev.filter(m => !ids.has(m.id))];
+        });
+      }
       removeToast(toastId);
-      addToast('success', `Đã gửi ${result.sentCount} thông báo giao bài trong app.${result.alreadyAssignedCount ? ` ${result.alreadyAssignedCount} người đã được giao trước đó, không gửi trùng.` : ''}`);
+      addToast('success', `Đã giao bài thi thành công cho ${recipientIds.length} nhân sự.`);
     } catch (err: any) {
       removeToast(toastId);
       addToast('error', `Lỗi giao bài: ${err.message}`);

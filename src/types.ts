@@ -476,6 +476,7 @@ export interface Quiz {
   durationMinutes: number;
   passScore: number; // e.g. 75
   targetDepartments: string[]; // ['ALL'] or specific
+  targetEmployeeIds?: string[]; // Danh sách mã định danh nhân viên được giao bài
   questions: QuizQuestion[];
   createdAt: string;
   scheduledStartTime?: string; // e.g. "2026-09-20T08:00" - Hẹn giờ phát đề (bắt đầu thi)

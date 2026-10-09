@@ -22,7 +22,7 @@ operationsRouter.get('/dashboard/headcount', asyncRoute(async (req, res) => {
       count(*) filter (where data->>'status' = 'ACTIVE')::int as "activeEmployees",
       count(*) filter (where data->>'status' = 'PROBATION')::int as "probationEmployees",
       count(*) filter (where lower(btrim(data->>'department')) = lower($1))::int as "shiftEmployees"
-    from private.records where module = 'employees'
+    from private.records where module = 'employees' and coalesce(data->>'isHidden','false') != 'true' and lower(coalesce(data->>'employeeCode','')) not like '%test%' and lower(coalesce(data->>'fullName','')) not like '%test%'
   `, [shift]);
   res.setHeader('Cache-Control', 'no-store');
   res.json({ totalEmployees: counts.totalEmployees, activeEmployees: counts.activeEmployees,

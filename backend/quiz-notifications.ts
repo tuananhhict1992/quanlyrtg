@@ -3,7 +3,7 @@ import { HttpError, transaction } from "./db";
 import { audit } from "./records";
 import { checksum, hasPermission } from "./security";
 
-export async function assignQuiz(user: any, quizId: string, input: unknown) {
+export async function assignQuiz(user: any, quizId: string, input: unknown, notify: boolean = true) {
   if (!hasPermission(user, "MANAGE_QUIZ") && !hasPermission(user, "CREATE_QUIZ"))
     throw new HttpError(403, "Bạn không có quyền giao bài kiểm tra.");
   if (!Array.isArray(input) || !input.length || input.length > 500 ||
@@ -22,6 +22,18 @@ export async function assignQuiz(user: any, quizId: string, input: unknown) {
     )).rows;
     if (employees.length !== recipientIds.length)
       throw new HttpError(409, "Danh sách có nhân viên không tồn tại hoặc đã ngừng hoạt động. Vui lòng tải lại danh sách.");
+
+    if (!notify) {
+      await audit(db, user.id, "exam.assign", "quizzes", quizId, {
+        recipientCount: recipientIds.length, sentCount: 0,
+      });
+      return {
+        sentCount: 0,
+        alreadyAssignedCount: 0,
+        recipientCount: recipientIds.length,
+        messages: [],
+      };
+    }
 
     // A stable primary key makes retries and concurrent dispatches idempotent.
     const messages = employees.map(({ id, data }) => {

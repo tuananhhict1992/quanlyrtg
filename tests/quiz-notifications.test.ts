@@ -50,6 +50,11 @@ test("76 quiz recipients see one notification each; retries preserve read state 
     const selected = await assignQuiz({...manager,id:'creator',assignedPermissions:['CREATE_QUIZ']},'quiz-2',[ids[1]]);
     assert.equal(selected.sentCount,1);
     assert.deepEqual(selected.messages[0].recipientIds,[ids[1]]);
+
+    const silent = await assignQuiz(manager, 'quiz-2', [ids[2]], false);
+    assert.equal(silent.sentCount, 0);
+    assert.equal(silent.recipientCount, 1);
+    assert.equal(silent.messages.length, 0);
   } finally {
     (pool as any).connect = savedConnect;
     await db.close();

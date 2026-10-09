@@ -27,6 +27,8 @@ import {
   Calendar,
   FileSpreadsheet,
   ArrowRight,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   Employee,
@@ -40,6 +42,7 @@ import {
 import { TabType } from './Sidebar';
 import { api } from '../services/supabase';
 import { AdminGoogleSyncNotice } from './GoogleSyncNotice';
+import { isTestAccount, isTestSubmission } from '../utils/testAccountHelper';
 
 interface HeadcountSummary {
   totalEmployees: number;
@@ -156,20 +159,44 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const announcementTitle = appSettings?.announcementTitle || 'Thông báo';
   const announcementContent = appSettings?.announcementContent || DEFAULT_ANNOUNCEMENT_CONTENT;
 
+  // State for quiz inspection expand/collapse & search
+  const [isQuizDetailsExpanded, setIsQuizDetailsExpanded] = useState<boolean>(false);
+  const [quizFilterSearch, setQuizFilterSearch] = useState<string>('');
+
+  // Lọc danh sách nhân sự chính thức, loại trừ tài khoản test độc lập khỏi thống kê chung
+  const standardEmployees = React.useMemo(
+    () => employees.filter((e) => !isTestAccount(e)),
+    [employees]
+  );
+  const testAccountIds = React.useMemo(
+    () => new Set(employees.filter(isTestAccount).map((e) => e.id)),
+    [employees]
+  );
+
+  // Lọc danh sách bài nộp của nhân sự chính thức, không tính bài nộp của tài khoản test
+  const standardSubmissions = React.useMemo(
+    () => submissions.filter((s) => !isTestSubmission(s, employees) && !testAccountIds.has(s.employeeId)),
+    [submissions, employees, testAccountIds]
+  );
+
   // Analytical metrics
-  const totalEmployees = employees.length;
+  const totalEmployees = standardEmployees.length;
   const headcountTotal = headcount?.totalEmployees;
   const headcountActive = headcount?.activeEmployees;
   const headcountProbation = headcount?.probationEmployees;
-  const syncedZaloCount = employees.filter((e) => e.zaloSynced).length;
+  const syncedZaloCount = standardEmployees.filter((e) => e.zaloSynced).length;
   const zaloSyncRate = Math.round((syncedZaloCount / (totalEmployees || 1)) * 100);
 
-  // Competency analytics
-  const totalSubmissions = submissions.length;
-  const passedSubmissions = submissions.filter((s) => s.passed).length;
+  // Competency analytics (chỉ tính nhân sự và bài thi chuẩn, không tính tài khoản test)
+  const totalSubmissions = standardSubmissions.length;
+  const passedSubmissions = standardSubmissions.filter((s) => s.passed).length;
+  const failedSubmissions = totalSubmissions - passedSubmissions;
   const quizPassRate = totalSubmissions > 0 ? Math.round((passedSubmissions / totalSubmissions) * 100) : 0;
+  const averageQuizScore = totalSubmissions > 0
+    ? Math.round(standardSubmissions.reduce((acc, s) => acc + s.score, 0) / totalSubmissions)
+    : 0;
   const averageCompetency = Math.round(
-    employees.reduce((acc, curr) => acc + (curr.competencyScore || 0), 0) / (totalEmployees || 1)
+    standardEmployees.reduce((acc, curr) => acc + (curr.competencyScore || 0), 0) / (totalEmployees || 1)
   );
 
   // Department distribution
@@ -177,13 +204,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     ? {[headcount.shift.name]: headcount.shift.totalEmployees}
     : {};
 
-  // Feedback stats
-  const pendingFeedbacks = feedbacks.filter((f) => f.status === 'PENDING').length;
-  const approvedFeedbacks = feedbacks.filter((f) => f.status === 'APPROVED').length;
-  const inReviewFeedbacks = feedbacks.filter((f) => f.status === 'IN_REVIEW').length;
+  // Feedback stats (không tính tài khoản test)
+  const standardFeedbacks = React.useMemo(
+    () => feedbacks.filter((f) => !testAccountIds.has(f.authorId) && !isTestAccount({ fullName: f.authorName })),
+    [feedbacks, testAccountIds]
+  );
+  const pendingFeedbacks = standardFeedbacks.filter((f) => f.status === 'PENDING').length;
+  const approvedFeedbacks = standardFeedbacks.filter((f) => f.status === 'APPROVED').length;
+  const inReviewFeedbacks = standardFeedbacks.filter((f) => f.status === 'IN_REVIEW').length;
 
-  // Violations recorded
-  const totalViolations = employees.reduce((sum, e) => sum + (e.violationCount || 0), 0);
+  // Violations recorded (chỉ tính nhân sự chuẩn)
+  const totalViolations = standardEmployees.reduce((sum, e) => sum + (e.violationCount || 0), 0);
 
   return (
     <div className="space-y-6 hict-dashboard">
@@ -351,55 +382,192 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Competency & Testing Highlights */}
         <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-4">
+            {/* Header with Title and Expand/Collapse Action */}
+            <div className="flex items-center justify-between mb-3.5 flex-wrap gap-2">
               <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                 <GraduationCap className="w-4 h-4 text-amber-600" />
-                Đánh giá Kết quả Kiểm tra Trắc nghiệm
+                <span>Đánh giá Kết quả Kiểm tra Trắc nghiệm</span>
               </h3>
-              <span className="text-xs text-amber-600 font-semibold bg-amber-50 px-2 py-0.5 rounded">
-                Tự động chấm điểm
-              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsQuizDetailsExpanded(!isQuizDetailsExpanded)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors shadow-2xs cursor-pointer"
+                  title={isQuizDetailsExpanded ? "Thu gọn danh sách" : "Thu phóng hiển thị toàn bộ chi tiết"}
+                >
+                  {isQuizDetailsExpanded ? (
+                    <>
+                      <ChevronUp className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Thu gọn</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Thu phóng ({totalSubmissions})</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-3">
-              {submissions.map((sub) => (
-                <div
-                  key={sub.id}
-                  className="p-3 rounded-xl bg-slate-50 border border-slate-200/70 flex items-center justify-between"
-                >
-                  <div className="min-w-0 flex-1 mr-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-800 truncate">
-                        {sub.employeeName}
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                          sub.passed
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-rose-100 text-rose-800'
-                        }`}
-                      >
-                        {sub.competencyLevel}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                      {sub.quizTitle}
-                    </p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <span className={`text-base font-extrabold ${sub.passed ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {sub.score}đ
-                    </span>
-                    <p className="text-[10px] text-slate-400">{sub.submittedAt.split(' ')[0]}</p>
-                  </div>
-                </div>
-              ))}
+            {/* SỐ LIỆU CHÍNH TỔNG HỢP (KEY METRICS) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3.5">
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Điểm TB</span>
+                <span className="text-base font-extrabold text-indigo-700">
+                  {totalSubmissions > 0 ? `${averageQuizScore}đ` : '—'}
+                </span>
+                <span className="text-[9px] text-slate-400 block">Thang 100</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Tỉ lệ đạt</span>
+                <span className="text-base font-extrabold text-emerald-600">
+                  {totalSubmissions > 0 ? `${quizPassRate}%` : '—'}
+                </span>
+                <span className="text-[9px] text-emerald-700 font-medium block">{passedSubmissions} bài đạt</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Tổng bài nộp</span>
+                <span className="text-base font-extrabold text-slate-800">
+                  {totalSubmissions}
+                </span>
+                <span className="text-[9px] text-slate-400 block">Lượt thi</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Chưa đạt</span>
+                <span className={`text-base font-extrabold ${failedSubmissions > 0 ? 'text-rose-600' : 'text-slate-500'}`}>
+                  {failedSubmissions}
+                </span>
+                <span className="text-[9px] text-slate-400 block">Cần rèn luyện</span>
+              </div>
             </div>
+
+            {/* Mini Progress Bar */}
+            {totalSubmissions > 0 && (
+              <div className="mb-3.5">
+                <div className="flex justify-between items-center text-[11px] mb-1 text-slate-500">
+                  <span>Tiến độ chất lượng sát hạch</span>
+                  <span className="font-bold text-slate-700">{passedSubmissions}/{totalSubmissions} lượt đạt ({quizPassRate}%)</span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                    style={{ width: `${quizPassRate}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* THU PHÓNG NỘI DUNG HIỂN THỊ */}
+            {isQuizDetailsExpanded && (
+              <div className="mb-3">
+                <div className="relative mb-2.5">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={quizFilterSearch}
+                    onChange={(e) => setQuizFilterSearch(e.target.value)}
+                    placeholder="Tìm theo tên nhân sự hoặc bài thi..."
+                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* DANH SÁCH BÀI THI (CÓ THU PHÓNG / GIỚI HẠN CHIỀU CAO CUỘN) */}
+            {(() => {
+              const query = quizFilterSearch.trim().toLowerCase();
+              const filteredList = standardSubmissions.filter((s) => {
+                if (!query) return true;
+                return (
+                  s.employeeName.toLowerCase().includes(query) ||
+                  s.quizTitle.toLowerCase().includes(query) ||
+                  (s.department || '').toLowerCase().includes(query)
+                );
+              });
+              const displayList = isQuizDetailsExpanded ? filteredList : standardSubmissions.slice(0, 3);
+
+              if (standardSubmissions.length === 0) {
+                return (
+                  <div className="text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <GraduationCap className="w-6 h-6 text-slate-300 mx-auto mb-1" />
+                    <p className="text-xs text-slate-500">Chưa có kết quả kiểm tra trắc nghiệm nào.</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-2">
+                  <div className={`space-y-2 ${isQuizDetailsExpanded ? 'max-h-72 overflow-y-auto pr-1' : ''}`}>
+                    {displayList.map((sub) => (
+                      <div
+                        key={sub.id}
+                        className="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100/80 border border-slate-200/70 flex items-center justify-between transition-colors"
+                      >
+                        <div className="min-w-0 flex-1 mr-3">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-bold text-slate-800 truncate">
+                              {sub.employeeName}
+                            </span>
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                                sub.passed
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}
+                            >
+                              {sub.competencyLevel}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                            {sub.quizTitle}
+                          </p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <span className={`text-sm font-black ${sub.passed ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {sub.score}đ
+                          </span>
+                          <p className="text-[10px] text-slate-400">{sub.submittedAt.split(' ')[0]}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {isQuizDetailsExpanded && filteredList.length === 0 && (
+                      <p className="text-center py-4 text-xs text-slate-400">Không tìm thấy bài nộp phù hợp.</p>
+                    )}
+                  </div>
+
+                  {!isQuizDetailsExpanded && standardSubmissions.length > 3 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsQuizDetailsExpanded(true)}
+                      className="w-full py-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50/70 hover:bg-indigo-100/70 rounded-xl transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <ChevronDown className="w-3.5 h-3.5" />
+                      <span>Xem thêm {standardSubmissions.length - 3} bài nộp khác (Mở rộng)</span>
+                    </button>
+                  )}
+
+                  {isQuizDetailsExpanded && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsQuizDetailsExpanded(false);
+                        setQuizFilterSearch('');
+                      }}
+                      className="w-full py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <ChevronUp className="w-3.5 h-3.5" />
+                      <span>Thu gọn danh sách</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <button
             onClick={() => setActiveTab('quiz')}
-            className="mt-4 w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+            className="mt-4 w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <span>Xem chi tiết hồ sơ năng lực nhân sự</span>
             <ChevronRightIcon className="w-3.5 h-3.5" />

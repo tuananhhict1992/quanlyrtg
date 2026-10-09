@@ -43,10 +43,12 @@ import {
   FileText,
   TrendingUp,
   Eye,
+  Send,
 } from 'lucide-react';
 import { Quiz, QuizQuestion, QuestionFolder, QuizSubmission, Employee, AppSettings, ExamType } from '../types';
 import { AiQuestionImportModal } from './AiQuestionImportModal';
 import { syncAllQuizzesToSheet } from '../services/googleSheetSyncService';
+import { isTestAccount, isTestSubmission } from '../utils/testAccountHelper';
 
 export type GradeLevel = 'GIOI' | 'KHA' | 'TRUNG_BINH' | 'KHONG_DAT';
 
@@ -297,17 +299,33 @@ export const QuizView: React.FC<QuizViewProps> = ({
   // Lọc theo xếp loại điểm số (Giỏi, Khá, Trung bình, Không đạt) trong Hồ sơ năng lực
   const [scoreGradeFilter, setScoreGradeFilter] = useState<'ALL' | 'GIOI' | 'KHA' | 'TRUNG_BINH' | 'KHONG_DAT'>('ALL');
 
-  // Thống kê tổng hợp số lượng & tỷ lệ các bậc điểm Giỏi, Khá, Trung bình, Không đạt
+  // Lọc tài khoản test và bài nộp test khỏi thống kê chung
+  const testAccountIds = React.useMemo(
+    () => new Set(allEmployees.filter(isTestAccount).map((e) => e.id)),
+    [allEmployees]
+  );
+
+  const standardSubmissions = React.useMemo(
+    () => submissions.filter((s) => !isTestSubmission(s, allEmployees) && !testAccountIds.has(s.employeeId)),
+    [submissions, allEmployees, testAccountIds]
+  );
+
+  const standardEmployees = React.useMemo(
+    () => allEmployees.filter((e) => !isTestAccount(e)),
+    [allEmployees]
+  );
+
+  // Thống kê tổng hợp số lượng & tỷ lệ các bậc điểm Giỏi, Khá, Trung bình, Không đạt (chỉ tính bài thi chuẩn)
   const gradeStats = React.useMemo(() => {
     let gioi = 0, kha = 0, tb = 0, kd = 0;
-    submissions.forEach((s) => {
+    standardSubmissions.forEach((s) => {
       const g = getScoreGrade(s.score).grade;
       if (g === 'GIOI') gioi++;
       else if (g === 'KHA') kha++;
       else if (g === 'TRUNG_BINH') tb++;
       else kd++;
     });
-    const total = submissions.length || 1;
+    const total = standardSubmissions.length || 1;
     return {
       gioi,
       kha,
@@ -317,16 +335,36 @@ export const QuizView: React.FC<QuizViewProps> = ({
       khaPercent: Math.round((kha / total) * 100),
       tbPercent: Math.round((tb / total) * 100),
       kdPercent: Math.round((kd / total) * 100),
-      totalSubmissions: submissions.length,
+      totalSubmissions: standardSubmissions.length,
     };
-  }, [submissions]);
+  }, [standardSubmissions]);
 
-  // Lấy danh sách nhân sự được giao đề
+  // Lấy danh sách nhân sự được giao đề (loại trừ tài khoản test độc lập)
   const getQuizTargetEmployees = React.useCallback((quiz: Quiz) => {
-    if (quiz.targetDepartments?.length && !quiz.targetDepartments.includes('ALL')) {
-      return allEmployees.filter((e) => e.status === 'ACTIVE' && quiz.targetDepartments.includes(e.department));
+    const activeBase = allEmployees.filter((e) => !isTestAccount(e) && e.status === 'ACTIVE');
+    if (quiz.targetEmployeeIds && quiz.targetEmployeeIds.length > 0) {
+      return activeBase.filter((e) => quiz.targetEmployeeIds!.includes(e.id));
     }
-    return allEmployees.filter((e) => e.status === 'ACTIVE');
+    if (quiz.targetDepartments?.length && !quiz.targetDepartments.includes('ALL')) {
+      return activeBase.filter((e) => quiz.targetDepartments.includes(e.department));
+    }
+    return activeBase;
+  }, [allEmployees]);
+
+  // Danh sách các Ca trong Tổ RTG (loại trừ tài khoản test)
+  const availableShifts = React.useMemo(() => {
+    const depts = new Set<string>();
+    allEmployees.forEach((e) => {
+      if (!isTestAccount(e) && e.status === 'ACTIVE' && e.department) {
+        depts.add(e.department);
+      }
+    });
+    return Array.from(depts).sort();
+  }, [allEmployees]);
+
+  // Danh sách nhân sự có thể giao bài (loại trừ tài khoản test)
+  const assignableEmployees = React.useMemo(() => {
+    return allEmployees.filter((e) => !isTestAccount(e) && e.status === 'ACTIVE');
   }, [allEmployees]);
 
   // Question Bank Folders & AI State
@@ -342,7 +380,10 @@ export const QuizView: React.FC<QuizViewProps> = ({
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [createdQuizId, setCreatedQuizId] = useState<string | null>(null);
   const [assignType, setAssignType] = useState<'ALL' | 'DEPARTMENT' | 'INDIVIDUAL'>('ALL');
-  const [assignTarget, setAssignTarget] = useState<string>('');
+  const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
+  const [selectedIndividualIds, setSelectedIndividualIds] = useState<string[]>([]);
+  const [assignSearch, setAssignSearch] = useState<string>('');
+  const [assignShiftFilter, setAssignShiftFilter] = useState<string>('ALL');
   const [isCreating, setIsCreating] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
   const [quizActionError, setQuizActionError] = useState('');
@@ -716,8 +757,11 @@ export const QuizView: React.FC<QuizViewProps> = ({
     try {
     await onAddQuiz(newQuiz);
     setCreatedQuizId(newQuiz.id);
-    setAssignTarget('');
     setAssignType('ALL');
+    setSelectedShifts([]);
+    setSelectedIndividualIds([]);
+    setAssignSearch('');
+    setAssignShiftFilter('ALL');
     setShowAssignModal(true);
     
     // Reset form
@@ -742,9 +786,26 @@ export const QuizView: React.FC<QuizViewProps> = ({
 
   const handleAssignQuiz = async () => {
     if (assignPending.current || !onAssignQuiz || !createdQuizId) return;
-    const recipients = allEmployees.filter(e => e.status === 'ACTIVE' && (
-      assignType === 'ALL' || (assignType === 'DEPARTMENT' ? e.department === assignTarget : e.id === assignTarget)
-    )).map(e => e.id);
+
+    let recipients: string[] = [];
+    if (assignType === 'ALL') {
+      recipients = assignableEmployees.map((e) => e.id);
+    } else if (assignType === 'DEPARTMENT') {
+      if (selectedShifts.length === 0) {
+        setQuizActionError('Vui lòng chọn ít nhất một Ca để giao bài.');
+        return;
+      }
+      recipients = assignableEmployees
+        .filter((e) => selectedShifts.includes(e.department))
+        .map((e) => e.id);
+    } else if (assignType === 'INDIVIDUAL') {
+      if (selectedIndividualIds.length === 0) {
+        setQuizActionError('Vui lòng chọn ít nhất một nhân sự để giao bài.');
+        return;
+      }
+      recipients = selectedIndividualIds;
+    }
+
     if (!recipients.length) {
       setQuizActionError('Vui lòng chọn nhân viên đang hoạt động để giao bài.');
       return;
@@ -753,6 +814,17 @@ export const QuizView: React.FC<QuizViewProps> = ({
     setIsAssigning(true);
     setQuizActionError('');
     try {
+      if (onEditQuiz) {
+        const quizToUpdate = quizzes.find((q) => q.id === createdQuizId);
+        if (quizToUpdate) {
+          const updatedQuiz: Quiz = {
+            ...quizToUpdate,
+            targetDepartments: assignType === 'ALL' ? ['ALL'] : (assignType === 'DEPARTMENT' ? selectedShifts : []),
+            targetEmployeeIds: assignType === 'INDIVIDUAL' ? recipients : undefined,
+          };
+          onEditQuiz(updatedQuiz);
+        }
+      }
       await onAssignQuiz(createdQuizId, recipients);
       setShowAssignModal(false);
       setActiveTab('LIST');
@@ -792,8 +864,8 @@ export const QuizView: React.FC<QuizViewProps> = ({
     return result;
   };
 
-  // Filter records
-  const filteredSubmissions = submissions.filter((s) => {
+  // Filter records (chỉ lấy bài nộp chuẩn, loại trừ tài khoản test độc lập)
+  const filteredSubmissions = standardSubmissions.filter((s) => {
     const matchSearch =
       s.employeeName.toLowerCase().includes(recordSearch.toLowerCase()) ||
       s.department.toLowerCase().includes(recordSearch.toLowerCase()) ||
@@ -815,6 +887,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
   // Tổng hợp số liệu theo từng nhân sự
   const employeeRecords = React.useMemo(() => {
     return allEmployees.map((emp) => {
+      const isTest = isTestAccount(emp);
       const empSubs = submissions.filter(
         (s) => s.employeeId === emp.id || (s.employeeName && s.employeeName.trim().toLowerCase() === emp.fullName.trim().toLowerCase())
       );
@@ -827,6 +900,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
 
       return {
         employee: emp,
+        isTest,
         submissions: empSubs,
         totalAttempts: empSubs.length,
         officialCount: officialSubs.length,
@@ -852,10 +926,10 @@ export const QuizView: React.FC<QuizViewProps> = ({
     });
   }, [employeeRecords, employeeRecordSearch, employeeDeptFilter]);
 
-  // Tổng hợp số liệu theo từng đề thi
+  // Tổng hợp số liệu theo từng đề thi (loại trừ tài khoản test khỏi số liệu chung)
   const quizRecords = React.useMemo(() => {
     return quizzes.map((quiz) => {
-      const qSubs = submissions.filter((s) => s.quizId === quiz.id);
+      const qSubs = standardSubmissions.filter((s) => s.quizId === quiz.id);
       const targetEmps = getQuizTargetEmployees(quiz);
       const submittedIds = new Set(qSubs.map((s) => s.employeeId));
       const completedCount = targetEmps.filter((e) => submittedIds.has(e.id)).length;
@@ -878,7 +952,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
         isPractice,
       };
     });
-  }, [quizzes, submissions, getQuizTargetEmployees]);
+  }, [quizzes, standardSubmissions, getQuizTargetEmployees]);
 
   const filteredQuizRecords = React.useMemo(() => {
     return quizRecords.filter((rec) => {
@@ -1018,7 +1092,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                 </h3>
               </div>
               <p className="text-xs text-indigo-200">
-                Tổng số: <b>{quizzes.length}</b> bộ đề thi • Đã nộp: <b>{submissions.length}</b> lượt thi trên toàn hệ thống
+                Tổng số: <b>{quizzes.length}</b> bộ đề thi • Đã nộp: <b>{standardSubmissions.length}</b> lượt thi trên toàn hệ thống
               </p>
             </div>
 
@@ -1046,7 +1120,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
             {quizzes.map((quiz) => {
               const targetList = getQuizTargetEmployees(quiz);
               const totalAssigned = Math.max(targetList.length, 1);
-              const quizSubs = submissions.filter((s) => s.quizId === quiz.id);
+              const quizSubs = standardSubmissions.filter((s) => s.quizId === quiz.id);
               const completedEmpIds = new Set(quizSubs.map((s) => s.employeeId));
               const completedCount = completedEmpIds.size;
               const percentCompleted = Math.round((completedCount / totalAssigned) * 100);
@@ -1073,15 +1147,15 @@ export const QuizView: React.FC<QuizViewProps> = ({
                           {quiz.category}
                         </span>
                         {quiz.examType === 'PRACTICE' || quiz.isPractice ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
                             Ôn tập
                           </span>
                         ) : (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
                             Thi chính thức
                           </span>
                         )}
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                           {quiz.maxAttempts ? `Tối đa ${quiz.maxAttempts} lần làm` : 'Làm không giới hạn'}
                         </span>
                       </div>
@@ -1093,6 +1167,37 @@ export const QuizView: React.FC<QuizViewProps> = ({
                           <Clock className="w-3 h-3" />
                           <span>{scheduleInfo.label}</span>
                         </span>
+
+                        {onAssignQuiz && (currentUser.role === 'ADMIN' || currentUser.role === 'MANAGER_L1' || currentUser.role === 'MANAGER') && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCreatedQuizId(quiz.id);
+                              if (quiz.targetEmployeeIds && quiz.targetEmployeeIds.length > 0) {
+                                setAssignType('INDIVIDUAL');
+                                setSelectedIndividualIds(quiz.targetEmployeeIds);
+                                setSelectedShifts([]);
+                              } else if (quiz.targetDepartments && !quiz.targetDepartments.includes('ALL') && quiz.targetDepartments.length > 0) {
+                                setAssignType('DEPARTMENT');
+                                setSelectedShifts(quiz.targetDepartments);
+                                setSelectedIndividualIds([]);
+                              } else {
+                                setAssignType('ALL');
+                                setSelectedShifts([]);
+                                setSelectedIndividualIds([]);
+                              }
+                              setAssignSearch('');
+                              setAssignShiftFilter('ALL');
+                              setQuizActionError('');
+                              setShowAssignModal(true);
+                            }}
+                            className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                            title="Giao bài thi này cho các Ca hoặc Nhân sự"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                          </button>
+                        )}
 
                         {onDeleteQuiz && (currentUser.role === 'ADMIN' || currentUser.role === 'MANAGER_L1' || currentUser.role === 'MANAGER') && (
                           <button
@@ -3582,84 +3687,276 @@ export const QuizView: React.FC<QuizViewProps> = ({
       {/* 6. ASSIGNMENT MODAL */}
       {showAssignModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
-            <h3 className="font-bold text-slate-900 text-lg mb-2">Giao bài & Thông báo</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Đề thi đã được lưu. Mỗi nhân viên được chọn sẽ nhận một thông báo trong hệ thống.
-            </p>
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                  <Send className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base leading-tight">Giao bài thi</h3>
+                  <p className="text-xs text-slate-500">Chỉ định đối tượng thực hiện kiểm tra trong Tổ RTG</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAssignModal(false);
+                  setActiveTab('LIST');
+                }}
+                className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
             <div className="space-y-4 text-sm">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Giao cho:</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Hình thức giao bài:</label>
                 <select
                   value={assignType}
                   disabled={isAssigning}
-                  onChange={(e) => {setAssignType(e.target.value as any);setAssignTarget('');setQuizActionError('');}}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl"
+                  onChange={(e) => {
+                    setAssignType(e.target.value as any);
+                    setQuizActionError('');
+                  }}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 >
-                  <option value="ALL">Toàn bộ công ty</option>
-                  <option value="DEPARTMENT">Theo phòng ban</option>
-                  <option value="INDIVIDUAL">Cá nhân cụ thể</option>
+                  <option value="ALL">Toàn bộ Tổ RTG</option>
+                  <option value="DEPARTMENT">Theo từng Ca</option>
+                  <option value="INDIVIDUAL">Theo cá nhân</option>
                 </select>
               </div>
 
-              {assignType === 'DEPARTMENT' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Chọn phòng ban:</label>
-                  <select
-                    value={assignTarget}
-                    disabled={isAssigning}
-                    onChange={(e) => setAssignTarget(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl"
-                  >
-                    <option value="">-- Chọn phòng ban --</option>
-                    {Array.from(new Set(allEmployees.map((e) => e.department))).map((dept) => (
-                      <option key={dept} value={dept}>
-                        {dept}
-                      </option>
-                    ))}
-                  </select>
+              {/* TOÀN BỘ TỔ RTG */}
+              {assignType === 'ALL' && (
+                <div className="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 text-xs space-y-1">
+                  <div className="flex items-center gap-2 font-bold text-indigo-900">
+                    <Users className="w-4 h-4 text-indigo-600" />
+                    <span>Giao bài cho Toàn bộ Tổ RTG</span>
+                  </div>
+                  <p className="text-slate-600 leading-relaxed">
+                    Đề thi sẽ được giao cho tất cả <b>{assignableEmployees.length}</b> nhân sự đang hoạt động trong Tổ RTG.
+                  </p>
+                  <p className="text-[11px] text-slate-500 italic">
+                    * Các tài khoản test độc lập sẽ tự động không được tính vào danh sách giao bài này.
+                  </p>
                 </div>
               )}
 
+              {/* THEO TỪNG CA - CHỌN MỘT HOẶC NHIỀU CA */}
+              {assignType === 'DEPARTMENT' && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Chọn các Ca (chọn 1 hoặc nhiều Ca):
+                    </label>
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedShifts([...availableShifts])}
+                        className="text-indigo-600 font-bold hover:underline cursor-pointer"
+                      >
+                        Chọn tất cả ca
+                      </button>
+                      <span className="text-slate-300">•</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedShifts([])}
+                        className="text-slate-500 hover:text-slate-800 cursor-pointer"
+                      >
+                        Bỏ chọn
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {availableShifts.map((shift) => {
+                      const isChecked = selectedShifts.includes(shift);
+                      const shiftCount = assignableEmployees.filter((e) => e.department === shift).length;
+                      return (
+                        <label
+                          key={shift}
+                          className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${
+                            isChecked
+                              ? 'bg-indigo-50 border-indigo-300 text-indigo-900 shadow-2xs font-bold'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-medium'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              disabled={isAssigning}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedShifts([...selectedShifts, shift]);
+                                } else {
+                                  setSelectedShifts(selectedShifts.filter((s) => s !== shift));
+                                }
+                              }}
+                              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            />
+                            <span className="text-xs truncate">{shift}</span>
+                          </div>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0">
+                            {shiftCount} NV
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <div className="pt-1 flex items-center justify-between text-xs text-slate-500">
+                    <span>Đã chọn: <b className="text-indigo-700">{selectedShifts.length}</b> / {availableShifts.length} Ca</span>
+                    <span>Tổng: <b className="text-indigo-700">{assignableEmployees.filter((e) => selectedShifts.includes(e.department)).length}</b> nhân sự</span>
+                  </div>
+                </div>
+              )}
+
+              {/* THEO CÁ NHÂN - CHỌN MỘT HOẶC NHIỀU NHÂN SỰ */}
               {assignType === 'INDIVIDUAL' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Chọn nhân viên:</label>
-                  <select
-                    value={assignTarget}
-                    disabled={isAssigning}
-                    onChange={(e) => setAssignTarget(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl"
-                  >
-                    <option value="">-- Chọn nhân viên --</option>
-                    {allEmployees.filter(e => e.status === 'ACTIVE').map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.fullName} ({e.employeeCode})
-                      </option>
-                    ))}
-                  </select>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Chọn nhân viên (chọn 1 hoặc nhiều người):
+                    </label>
+                    <span className="text-[11px] font-bold text-indigo-600">
+                      Đã chọn {selectedIndividualIds.length} nhân sự
+                    </span>
+                  </div>
+
+                  {/* Thanh lọc & tìm kiếm */}
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={assignSearch}
+                        onChange={(e) => setAssignSearch(e.target.value)}
+                        placeholder="Tìm tên hoặc mã NV..."
+                        className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <select
+                      value={assignShiftFilter}
+                      onChange={(e) => setAssignShiftFilter(e.target.value)}
+                      className="px-2.5 py-1.5 text-xs border border-slate-200 rounded-xl bg-slate-50 text-slate-700 font-medium"
+                    >
+                      <option value="ALL">Tất cả Ca</option>
+                      {availableShifts.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Quick selection actions & list */}
+                  {(() => {
+                    const q = assignSearch.trim().toLowerCase();
+                    const filteredAssignable = assignableEmployees.filter((e) => {
+                      const matchSearch =
+                        !q ||
+                        e.fullName.toLowerCase().includes(q) ||
+                        (e.employeeCode || '').toLowerCase().includes(q);
+                      const matchShift = assignShiftFilter === 'ALL' || e.department === assignShiftFilter;
+                      return matchSearch && matchShift;
+                    });
+
+                    return (
+                      <>
+                        <div className="flex items-center justify-between text-[11px] px-1 text-slate-500">
+                          <span>Hiển thị {filteredAssignable.length} nhân sự</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const idsToAdd = filteredAssignable.map((e) => e.id);
+                                setSelectedIndividualIds(Array.from(new Set([...selectedIndividualIds, ...idsToAdd])));
+                              }}
+                              className="text-indigo-600 font-bold hover:underline cursor-pointer"
+                            >
+                              Chọn tất cả hiển thị
+                            </button>
+                            <span>•</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedIndividualIds([])}
+                              className="text-slate-500 hover:text-slate-800 cursor-pointer"
+                            >
+                              Bỏ chọn tất cả
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Scrollable Checkbox List */}
+                        <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100 bg-slate-50/50 pr-1">
+                          {filteredAssignable.length === 0 ? (
+                            <p className="text-center py-4 text-xs text-slate-400">Không tìm thấy nhân viên phù hợp.</p>
+                          ) : (
+                            filteredAssignable.map((emp) => {
+                              const isChecked = selectedIndividualIds.includes(emp.id);
+                              return (
+                                <label
+                                  key={emp.id}
+                                  className={`flex items-center justify-between p-2 text-xs cursor-pointer transition-colors ${
+                                    isChecked ? 'bg-indigo-50/80 font-semibold text-indigo-950' : 'hover:bg-slate-100/70 text-slate-700'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      disabled={isAssigning}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setSelectedIndividualIds([...selectedIndividualIds, emp.id]);
+                                        } else {
+                                          setSelectedIndividualIds(selectedIndividualIds.filter((id) => id !== emp.id));
+                                        }
+                                      }}
+                                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                    />
+                                    <span className="truncate">{emp.fullName}</span>
+                                    <span className="text-[10px] font-mono text-slate-400">({emp.employeeCode || emp.id})</span>
+                                  </div>
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200/70 text-slate-700 shrink-0">
+                                    {emp.department || 'Tổ RTG'}
+                                  </span>
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
 
             {quizActionError && <p role="alert" className="mt-3 text-sm text-red-600">{quizActionError}</p>}
-            <div className="flex items-center justify-end gap-3 mt-6">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
               <button
+                type="button"
                 disabled={isAssigning}
                 onClick={() => {
                   setShowAssignModal(false);
                   setActiveTab('LIST');
                 }}
-                className="px-4 py-2 rounded-xl font-semibold text-slate-600 hover:bg-slate-100"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
               >
                 Bỏ qua
               </button>
               <button
+                type="button"
                 onClick={handleAssignQuiz}
                 disabled={isAssigning || !onAssignQuiz}
-                className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700"
+                className="px-5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 shadow-xs cursor-pointer disabled:opacity-50"
               >
-                {isAssigning ? 'Đang giao bài...' : 'Giao bài & Gửi thông báo'}
+                {isAssigning ? 'Đang giao bài...' : 'Xác nhận giao bài'}
               </button>
             </div>
           </div>
