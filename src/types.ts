@@ -356,6 +356,7 @@ export interface Employee {
   approvedLeaves?: EmployeeLeaveRecord[];
   customScoreAdjustments?: CustomScoreAdjustment[];
   violationRecords?: EmployeeViolationRecord[];
+  isHidden?: boolean; // Nhân sự ẩn (tài khoản test, chỉ hiển thị với Admin)
 }
 
 export interface EmployeeMonthlyEvaluation {
@@ -460,12 +461,16 @@ export interface DriveFileItem {
   isFolder?: boolean;
 }
 
+export type ExamType = 'PRACTICE' | 'OFFICIAL';
+
 export interface Quiz {
   id: string;
   title: string;
   code: string;
   category: string;
   description: string;
+  examType?: ExamType; // 'PRACTICE' (Ôn tập) hoặc 'OFFICIAL' (Thi chính thức)
+  isPractice?: boolean; // Thi không lưu điểm vào hồ sơ năng lực
   durationMinutes: number;
   passScore: number; // e.g. 75
   targetDepartments: string[]; // ['ALL'] or specific
@@ -482,6 +487,8 @@ export interface QuizSubmission {
   id: string;
   quizId: string;
   quizTitle: string;
+  examType?: ExamType;
+  isPractice?: boolean;
   employeeId: string;
   employeeName: string;
   department: string;

@@ -3,6 +3,7 @@ import { sourceForModule, clearSource } from "./excelProcessing";
 import { createRequestQueue } from './request-queue';
 import { createRealtimeHub } from './realtime-hub';
 import { createApiBackoff } from './api-backoff';
+import { safeAbortSignalAny, safeTimeoutSignal } from '../utils/polyfills';
 export type { User };
 const env = (import.meta as any).env;
 export const configured = !!(
@@ -55,8 +56,8 @@ export async function apiFetch(
     const { data: { session } } = await supabase.auth.getSession();
     const headers = new Headers(init.headers);
     if (session) headers.set('Authorization', `Bearer ${session.access_token}`);
-    const timeout = read ? AbortSignal.timeout(20000) : undefined;
-    const signal = init.signal && timeout ? AbortSignal.any([init.signal, timeout]) : init.signal || timeout;
+    const timeout = read ? safeTimeoutSignal(20000) : undefined;
+    const signal = safeAbortSignalAny([init.signal, timeout]);
     return fetch(rawUrl, { ...init, headers, signal });
   }, read, init.signal || undefined);
   if (res.status === 401) {
@@ -101,7 +102,11 @@ export async function loginWithUsername(username: string, password: string, sign
   if (response.status === 503 || response.status === 504)
     throw new Error('Hệ thống đăng nhập đang bận. Vui lòng chờ một lúc rồi thử lại.');
   if (!response.ok) throw new Error(session.error || 'Không thể đăng nhập.');
-  signal?.throwIfAborted();
+  if (signal?.aborted) {
+    const err = (signal as any).reason || new Error('Yêu cầu đăng nhập đã bị hủy.');
+    err.name = 'AbortError';
+    throw err;
+  }
   const { data, error } = await supabase.auth.setSession(session);
   if (error) throw error;
   return data.user;

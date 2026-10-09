@@ -111,6 +111,13 @@ export function readScope(
   module: string,
 ): { clause: string; params: any[] } {
   validModule(module);
+  if (module === 'employees') {
+    if (user.role === 'ADMIN') return { clause: 'true', params: [] };
+    if (hasPermission(user, 'MANAGE_HR')) {
+      return { clause: "(coalesce(data->>'isHidden','false') != 'true' or id = $2)", params: [user.id] };
+    }
+    return { clause: 'id=$2', params: [user.id] };
+  }
   if (hasPermission(user, MODULE_PERMISSIONS[module]))
     return { clause: "true", params: [] };
   if (module === 'incidents') {
@@ -147,7 +154,9 @@ export function authorizeWrite(
   if (module === "employees") {
     if (next.role === 'ADMIN' && previous?.role !== 'ADMIN' && user.role !== 'ADMIN')
       throw new HttpError(403, 'Chỉ Admin được cấp vai trò Admin.');
-    const guarded = ["role", "assignedPermissions", "visibleTabs", "status"];
+    const guarded = ["role", "assignedPermissions", "visibleTabs", "status", "isHidden"];
+    if (next.isHidden !== previous?.isHidden && user.role !== 'ADMIN')
+      throw new HttpError(403, 'Chỉ Admin mới có quyền thiết lập nhân sự ẩn.');
     if (guarded.some((k) => canonical(next[k]) !== canonical(previous?.[k])))
       assertPermission(user, "MANAGE_PERMISSIONS");
     if (hasPermission(user, "MANAGE_HR")) return;

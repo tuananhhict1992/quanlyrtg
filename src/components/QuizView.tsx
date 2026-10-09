@@ -40,8 +40,11 @@ import {
   SlidersHorizontal,
   Layers,
   ListFilter,
+  FileText,
+  TrendingUp,
+  Eye,
 } from 'lucide-react';
-import { Quiz, QuizQuestion, QuestionFolder, QuizSubmission, Employee, AppSettings } from '../types';
+import { Quiz, QuizQuestion, QuestionFolder, QuizSubmission, Employee, AppSettings, ExamType } from '../types';
 import { AiQuestionImportModal } from './AiQuestionImportModal';
 import { syncAllQuizzesToSheet } from '../services/googleSheetSyncService';
 
@@ -231,6 +234,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
   // Create Quiz State
   const [newQuizTitle, setNewQuizTitle] = useState('');
   const [newQuizDescription, setNewQuizDescription] = useState('');
+  const [newQuizExamType, setNewQuizExamType] = useState<ExamType>('OFFICIAL');
   const [newQuizDuration, setNewQuizDuration] = useState(15);
   const [newQuizPassScore, setNewQuizPassScore] = useState(80);
   const [newQuizMaxAttempts, setNewQuizMaxAttempts] = useState<number>(1);
@@ -256,6 +260,15 @@ export const QuizView: React.FC<QuizViewProps> = ({
   const [viewUncompletedQuiz, setViewUncompletedQuiz] = useState<Quiz | null>(null);
   const [uncompletedSearch, setUncompletedSearch] = useState<string>('');
   const [copiedUncompleted, setCopiedUncompleted] = useState<boolean>(false);
+  const [uncompletedModalTab, setUncompletedModalTab] = useState<'UNCOMPLETED' | 'COMPLETED'>('UNCOMPLETED');
+
+  // Phân mục trong Hồ sơ năng lực (Xem theo nhân sự, Xem theo đề thi, Toàn bộ bài nộp)
+  const [recordsSection, setRecordsSection] = useState<'EMPLOYEES' | 'EXAMS' | 'SUBMISSIONS'>('EMPLOYEES');
+  const [employeeRecordSearch, setEmployeeRecordSearch] = useState<string>('');
+  const [employeeDeptFilter, setEmployeeDeptFilter] = useState<string>('ALL');
+  const [examRecordSearch, setExamRecordSearch] = useState<string>('');
+  const [examTypeFilter, setExamTypeFilter] = useState<'ALL' | 'OFFICIAL' | 'PRACTICE'>('ALL');
+  const [selectedEmpQuizDetail, setSelectedEmpQuizDetail] = useState<Employee | null>(null);
 
   // Lọc theo xếp loại điểm số (Giỏi, Khá, Trung bình, Không đạt) trong Hồ sơ năng lực
   const [scoreGradeFilter, setScoreGradeFilter] = useState<'ALL' | 'GIOI' | 'KHA' | 'TRUNG_BINH' | 'KHONG_DAT'>('ALL');
@@ -644,6 +657,8 @@ export const QuizView: React.FC<QuizViewProps> = ({
       code: `KT-${Date.now().toString().slice(-4)}`,
       category: 'KiemTra',
       description: newQuizDescription,
+      examType: newQuizExamType,
+      isPractice: newQuizExamType === 'PRACTICE',
       durationMinutes: newQuizDuration,
       passScore: newQuizPassScore,
       targetDepartments: ['ALL'],
@@ -669,6 +684,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
     // Reset form
     setNewQuizTitle('');
     setNewQuizDescription('');
+    setNewQuizExamType('OFFICIAL');
     setNewQuizQuestions([]);
     setNewQuizScheduledStart('');
     setNewQuizScheduledEnd('');
@@ -747,6 +763,98 @@ export const QuizView: React.FC<QuizViewProps> = ({
     if (scoreGradeFilter === 'ALL') return true;
     return getScoreGrade(s.score).grade === scoreGradeFilter;
   });
+
+  // Danh sách các phòng ban/tổ từ danh sách nhân sự
+  const departmentList = React.useMemo(() => {
+    const depts = new Set<string>();
+    allEmployees.forEach((e) => {
+      if (e.department) depts.add(e.department);
+    });
+    return Array.from(depts).sort();
+  }, [allEmployees]);
+
+  // Tổng hợp số liệu theo từng nhân sự
+  const employeeRecords = React.useMemo(() => {
+    return allEmployees.map((emp) => {
+      const empSubs = submissions.filter(
+        (s) => s.employeeId === emp.id || (s.employeeName && s.employeeName.trim().toLowerCase() === emp.fullName.trim().toLowerCase())
+      );
+      const officialSubs = empSubs.filter((s) => !s.isPractice && s.examType !== 'PRACTICE');
+      const practiceSubs = empSubs.filter((s) => s.isPractice || s.examType === 'PRACTICE');
+      const avgScore = empSubs.length > 0
+        ? Math.round(empSubs.reduce((acc, cur) => acc + cur.score, 0) / empSubs.length)
+        : null;
+      const passedSubs = empSubs.filter((s) => s.score >= 50);
+
+      return {
+        employee: emp,
+        submissions: empSubs,
+        totalAttempts: empSubs.length,
+        officialCount: officialSubs.length,
+        practiceCount: practiceSubs.length,
+        avgScore,
+        passRate: empSubs.length > 0 ? Math.round((passedSubs.length / empSubs.length) * 100) : 0,
+        competencyScore: emp.competencyScore ?? 100,
+        quizzesCompleted: emp.quizzesCompleted ?? officialSubs.length,
+      };
+    });
+  }, [allEmployees, submissions]);
+
+  const filteredEmployeeRecords = React.useMemo(() => {
+    return employeeRecords.filter((rec) => {
+      const term = employeeRecordSearch.trim().toLowerCase();
+      const matchSearch =
+        !term ||
+        rec.employee.fullName.toLowerCase().includes(term) ||
+        rec.employee.employeeCode.toLowerCase().includes(term) ||
+        (rec.employee.department && rec.employee.department.toLowerCase().includes(term));
+      const matchDept = employeeDeptFilter === 'ALL' || rec.employee.department === employeeDeptFilter;
+      return matchSearch && matchDept;
+    });
+  }, [employeeRecords, employeeRecordSearch, employeeDeptFilter]);
+
+  // Tổng hợp số liệu theo từng đề thi
+  const quizRecords = React.useMemo(() => {
+    return quizzes.map((quiz) => {
+      const qSubs = submissions.filter((s) => s.quizId === quiz.id);
+      const targetEmps = getQuizTargetEmployees(quiz);
+      const submittedIds = new Set(qSubs.map((s) => s.employeeId));
+      const completedCount = targetEmps.filter((e) => submittedIds.has(e.id)).length;
+      const uncompletedCount = Math.max(0, targetEmps.length - completedCount);
+      const avgScore = qSubs.length > 0
+        ? Math.round(qSubs.reduce((acc, cur) => acc + cur.score, 0) / qSubs.length)
+        : null;
+      const passedCount = qSubs.filter((s) => s.score >= (quiz.passScore || 80)).length;
+      const passRate = qSubs.length > 0 ? Math.round((passedCount / qSubs.length) * 100) : null;
+      const isPractice = Boolean(quiz.examType === 'PRACTICE' || quiz.isPractice);
+
+      return {
+        quiz,
+        submissions: qSubs,
+        totalAssigned: targetEmps.length,
+        completedCount,
+        uncompletedCount,
+        avgScore,
+        passRate,
+        isPractice,
+      };
+    });
+  }, [quizzes, submissions, getQuizTargetEmployees]);
+
+  const filteredQuizRecords = React.useMemo(() => {
+    return quizRecords.filter((rec) => {
+      const term = examRecordSearch.trim().toLowerCase();
+      const matchSearch =
+        !term ||
+        rec.quiz.title.toLowerCase().includes(term) ||
+        (rec.quiz.description && rec.quiz.description.toLowerCase().includes(term));
+      const matchType =
+        examTypeFilter === 'ALL' ||
+        (examTypeFilter === 'PRACTICE' && rec.isPractice) ||
+        (examTypeFilter === 'OFFICIAL' && !rec.isPractice);
+      return matchSearch && matchType;
+    });
+  }, [quizRecords, examRecordSearch, examTypeFilter]);
 
   return (
     <div className="space-y-6">
@@ -925,6 +1033,15 @@ export const QuizView: React.FC<QuizViewProps> = ({
                         <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
                           {quiz.category}
                         </span>
+                        {quiz.examType === 'PRACTICE' || quiz.isPractice ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                            Ôn tập
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
+                            Thi chính thức
+                          </span>
+                        )}
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                           {quiz.maxAttempts ? `Tối đa ${quiz.maxAttempts} lần làm` : 'Làm không giới hạn'}
                         </span>
@@ -1115,6 +1232,15 @@ export const QuizView: React.FC<QuizViewProps> = ({
                   <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-200 border border-rose-400/30 flex items-center gap-1">
                     <Timer className="w-2.5 h-2.5" />
                     <span>Đóng đề lúc: {new Date(selectedQuiz.scheduledEndTime).toLocaleTimeString('vi-VN', {timeZone:'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' })}</span>
+                  </span>
+                )}
+                {selectedQuiz.examType === 'PRACTICE' || selectedQuiz.isPractice ? (
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-amber-500/30 text-amber-200 border border-amber-400/40">
+                    Ôn tập (Không lưu điểm năng lực)
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-500/30 text-blue-200 border border-blue-400/40">
+                    Thi chính thức (Tính điểm năng lực)
                   </span>
                 )}
               </div>
@@ -1399,117 +1525,67 @@ export const QuizView: React.FC<QuizViewProps> = ({
       {/* 4. COMPETENCY RECORDS ARCHIVE */}
       {activeTab === 'RECORDS' && (
         <div className="space-y-4">
-          {/* BẢNG THỐNG KÊ ĐIỂM: GIỎI, KHÁ, TRUNG BÌNH, KHÔNG ĐẠT */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <button
-              type="button"
-              onClick={() => setScoreGradeFilter(scoreGradeFilter === 'GIOI' ? 'ALL' : 'GIOI')}
-              className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-                scoreGradeFilter === 'GIOI'
-                  ? 'bg-emerald-100 border-emerald-500 shadow-sm ring-2 ring-emerald-500/30'
-                  : 'bg-emerald-50/70 border-emerald-200 hover:bg-emerald-100/70'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-emerald-800 uppercase tracking-wide">Giỏi (≥ 85đ)</span>
-                <Trophy className="w-4 h-4 text-emerald-600" />
-              </div>
-              <div className="text-2xl font-black text-emerald-900">{gradeStats.gioi} <span className="text-xs font-normal text-emerald-700">bài</span></div>
-              <div className="text-[11px] text-emerald-700 font-semibold mt-0.5">
-                Chiếm {gradeStats.gioiPercent}% tổng số bài nộp
-              </div>
-            </button>
+          {/* Thanh chuyển đổi phân mục trong Hồ sơ năng lực */}
+          <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setRecordsSection('EMPLOYEES')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  recordsSection === 'EMPLOYEES'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Xem theo nhân sự</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                  recordsSection === 'EMPLOYEES' ? 'bg-indigo-700/80 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {filteredEmployeeRecords.length}
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setScoreGradeFilter(scoreGradeFilter === 'KHA' ? 'ALL' : 'KHA')}
-              className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-                scoreGradeFilter === 'KHA'
-                  ? 'bg-blue-100 border-blue-500 shadow-sm ring-2 ring-blue-500/30'
-                  : 'bg-blue-50/70 border-blue-200 hover:bg-blue-100/70'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-blue-800 uppercase tracking-wide">Khá (70–84đ)</span>
-                <Medal className="w-4 h-4 text-blue-600" />
-              </div>
-              <div className="text-2xl font-black text-blue-900">{gradeStats.kha} <span className="text-xs font-normal text-blue-700">bài</span></div>
-              <div className="text-[11px] text-blue-700 font-semibold mt-0.5">
-                Chiếm {gradeStats.khaPercent}% tổng số bài nộp
-              </div>
-            </button>
+              <button
+                type="button"
+                onClick={() => setRecordsSection('EXAMS')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  recordsSection === 'EXAMS'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Xem theo đề thi</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                  recordsSection === 'EXAMS' ? 'bg-indigo-700/80 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {filteredQuizRecords.length}
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setScoreGradeFilter(scoreGradeFilter === 'TRUNG_BINH' ? 'ALL' : 'TRUNG_BINH')}
-              className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-                scoreGradeFilter === 'TRUNG_BINH'
-                  ? 'bg-amber-100 border-amber-500 shadow-sm ring-2 ring-amber-500/30'
-                  : 'bg-amber-50/70 border-amber-200 hover:bg-amber-100/70'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-amber-800 uppercase tracking-wide">Trung bình (50–69đ)</span>
-                <Award className="w-4 h-4 text-amber-600" />
-              </div>
-              <div className="text-2xl font-black text-amber-900">{gradeStats.tb} <span className="text-xs font-normal text-amber-700">bài</span></div>
-              <div className="text-[11px] text-amber-700 font-semibold mt-0.5">
-                Chiếm {gradeStats.tbPercent}% tổng số bài nộp
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setScoreGradeFilter(scoreGradeFilter === 'KHONG_DAT' ? 'ALL' : 'KHONG_DAT')}
-              className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-                scoreGradeFilter === 'KHONG_DAT'
-                  ? 'bg-rose-100 border-rose-500 shadow-sm ring-2 ring-rose-500/30'
-                  : 'bg-rose-50/70 border-rose-200 hover:bg-rose-100/70'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-rose-800 uppercase tracking-wide">Không đạt (&lt; 50đ)</span>
-                <XCircle className="w-4 h-4 text-rose-600" />
-              </div>
-              <div className="text-2xl font-black text-rose-900">{gradeStats.kd} <span className="text-xs font-normal text-rose-700">bài</span></div>
-              <div className="text-[11px] text-rose-700 font-semibold mt-0.5">
-                Chiếm {gradeStats.kdPercent}% tổng số bài nộp
-              </div>
-            </button>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="relative w-full sm:w-80">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Tìm theo tên nhân sự, phòng ban, bài thi..."
-                  value={recordSearch}
-                  onChange={(e) => setRecordSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-
-              {scoreGradeFilter !== 'ALL' && (
-                <button
-                  type="button"
-                  onClick={() => setScoreGradeFilter('ALL')}
-                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1 transition-colors whitespace-nowrap"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  <span>Xóa lọc xếp loại</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setRecordsSection('SUBMISSIONS')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  recordsSection === 'SUBMISSIONS'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Toàn bộ bài nộp</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                  recordsSection === 'SUBMISSIONS' ? 'bg-indigo-700/80 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {filteredSubmissions.length}
+                </span>
+              </button>
             </div>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-              <span className="text-xs text-slate-500 font-medium">
-                Hiển thị <b>{filteredSubmissions.length}</b> / <b>{submissions.length}</b> bản ghi
-              </span>
-
-              {/* Google Sheet Sync Button */}
-              {currentUser.role === 'ADMIN' && <button
+            {/* Google Sheet Sync Button (Admin) */}
+            {currentUser.role === 'ADMIN' && (
+              <button
                 type="button"
                 onClick={handleSyncQuizzesToSheet}
                 disabled={isSyncingQuizSheet}
@@ -1518,8 +1594,8 @@ export const QuizView: React.FC<QuizViewProps> = ({
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
                 <span>{isSyncingQuizSheet ? 'Đang đồng bộ...' : 'Đồng bộ Google Sheet'}</span>
-              </button>}
-            </div>
+              </button>
+            )}
           </div>
 
           {quizSyncNotice && (
@@ -1529,47 +1605,650 @@ export const QuizView: React.FC<QuizViewProps> = ({
             </div>
           )}
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs sm:text-sm border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold text-[11px] uppercase tracking-wider">
-                    <th className="py-3 px-4">Nhân sự</th>
-                    <th className="py-3 px-4">Phòng ban</th>
-                    <th className="py-3 px-4">Đề thi</th>
-                    <th className="py-3 px-4">Điểm số</th>
-                    <th className="py-3 px-4">Xếp loại</th>
-                    <th className="py-3 px-4">Thời gian nộp</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredSubmissions.map((sub) => {
-                    const gradeInfo = getScoreGrade(sub.score);
-                    return (
-                      <tr key={sub.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3.5 px-4 font-bold text-slate-900">{sub.employeeName}</td>
-                        <td className="py-3.5 px-4 text-slate-600">{sub.department}</td>
-                        <td className="py-3.5 px-4 text-slate-800 font-medium">{sub.quizTitle}</td>
-                        <td className="py-3.5 px-4">
-                          <span className={`font-black text-sm ${sub.score >= 50 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                            {sub.score} / 100
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span
-                            className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${gradeInfo.badgeClass}`}
-                          >
-                            {gradeInfo.label} ({sub.competencyLevel})
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-400 text-xs font-mono">{sub.submittedAt}</td>
+          {/* PHÂN MỤC 1: XEM THEO NHÂN SỰ */}
+          {recordsSection === 'EMPLOYEES' && (
+            <div className="space-y-4">
+              {/* Thanh lọc nhân sự */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-72">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Tìm theo tên, mã NV, phòng ban..."
+                      value={employeeRecordSearch}
+                      onChange={(e) => setEmployeeRecordSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <select
+                      value={employeeDeptFilter}
+                      onChange={(e) => setEmployeeDeptFilter(e.target.value)}
+                      className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-full sm:w-auto"
+                    >
+                      <option value="ALL">Tất cả phòng ban / tổ ({allEmployees.length})</option>
+                      {departmentList.map((dept) => (
+                        <option key={dept} value={dept}>
+                          {dept} ({allEmployees.filter((e) => e.department === dept).length})
+                        </option>
+                      ))}
+                    </select>
+
+                    {(employeeRecordSearch || employeeDeptFilter !== 'ALL') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmployeeRecordSearch('');
+                          setEmployeeDeptFilter('ALL');
+                        }}
+                        className="px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1 transition-colors whitespace-nowrap"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Xóa lọc</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="text-xs text-slate-500 font-medium">
+                  Hiển thị <b>{filteredEmployeeRecords.length}</b> / <b>{allEmployees.length}</b> nhân sự
+                </div>
+              </div>
+
+              {/* Bảng danh sách nhân sự & điểm năng lực */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs sm:text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold text-[11px] uppercase tracking-wider">
+                        <th className="py-3 px-4">Nhân sự</th>
+                        <th className="py-3 px-4">Mã NV</th>
+                        <th className="py-3 px-4">Tổ / Phòng ban</th>
+                        <th className="py-3 px-4 text-center">Điểm năng lực</th>
+                        <th className="py-3 px-4 text-center">Đã hoàn thành</th>
+                        <th className="py-3 px-4 text-center">Điểm TB</th>
+                        <th className="py-3 px-4 text-center">Tỷ lệ đạt</th>
+                        <th className="py-3 px-4 text-right">Lịch sử thi</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredEmployeeRecords.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="py-10 text-center text-slate-400 text-xs">
+                            Không tìm thấy nhân sự phù hợp với điều kiện tìm kiếm.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredEmployeeRecords.map((rec) => {
+                          const score = rec.competencyScore;
+                          const scoreColorClass =
+                            score >= 85 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
+                            score >= 70 ? 'text-blue-700 bg-blue-50 border-blue-200' :
+                            score >= 50 ? 'text-amber-700 bg-amber-50 border-amber-200' :
+                            'text-rose-700 bg-rose-50 border-rose-200';
+
+                          return (
+                            <tr key={rec.employee.id} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="py-3.5 px-4">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                    {rec.employee.fullName ? rec.employee.fullName.charAt(0).toUpperCase() : 'U'}
+                                  </div>
+                                  <div>
+                                    <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                      <span>{rec.employee.fullName}</span>
+                                      {rec.employee.isHidden && (
+                                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-bold border border-amber-300">
+                                          Ẩn
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[11px] text-slate-500">{rec.employee.position || 'Nhân viên'}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4 font-mono font-medium text-slate-600 text-xs">
+                                {rec.employee.employeeCode || '—'}
+                              </td>
+                              <td className="py-3.5 px-4 text-slate-700 font-medium">
+                                <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-xs border border-slate-200">
+                                  {rec.employee.department || 'Tổ RTG'}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-center">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-black border ${scoreColorClass}`}>
+                                  {score} đ
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-center">
+                                <span className="font-bold text-slate-900">{rec.totalAttempts}</span>
+                                <span className="text-[11px] text-slate-500 ml-1">
+                                  ({rec.officialCount} chính thức{rec.practiceCount > 0 ? `, ${rec.practiceCount} ôn tập` : ''})
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-center font-bold">
+                                {rec.avgScore !== null ? (
+                                  <span className={rec.avgScore >= 50 ? 'text-emerald-700' : 'text-rose-700'}>
+                                    {rec.avgScore}đ
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 font-normal">Chưa thi</span>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4 text-center">
+                                {rec.totalAttempts > 0 ? (
+                                  <span className={`text-xs font-bold ${rec.passRate >= 80 ? 'text-emerald-600' : rec.passRate >= 50 ? 'text-blue-600' : 'text-rose-600'}`}>
+                                    {rec.passRate}%
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedEmpQuizDetail(rec.employee)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-bold transition-colors cursor-pointer"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Xem bài thi ({rec.totalAttempts})</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* PHÂN MỤC 2: XEM THEO ĐỀ THI */}
+          {recordsSection === 'EXAMS' && (
+            <div className="space-y-4">
+              {/* Thanh lọc đề thi */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-72">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Tìm theo tên đề thi, mô tả..."
+                      value={examRecordSearch}
+                      onChange={(e) => setExamRecordSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <select
+                      value={examTypeFilter}
+                      onChange={(e) => setExamTypeFilter(e.target.value as any)}
+                      className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-full sm:w-auto"
+                    >
+                      <option value="ALL">Tất cả loại đề ({quizzes.length})</option>
+                      <option value="OFFICIAL">
+                        Thi chính thức ({quizzes.filter((q) => !q.isPractice && q.examType !== 'PRACTICE').length})
+                      </option>
+                      <option value="PRACTICE">
+                        Ôn tập ({quizzes.filter((q) => q.isPractice || q.examType === 'PRACTICE').length})
+                      </option>
+                    </select>
+
+                    {(examRecordSearch || examTypeFilter !== 'ALL') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExamRecordSearch('');
+                          setExamTypeFilter('ALL');
+                        }}
+                        className="px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1 transition-colors whitespace-nowrap"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Xóa lọc</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="text-xs text-slate-500 font-medium">
+                  Hiển thị <b>{filteredQuizRecords.length}</b> / <b>{quizzes.length}</b> đề thi
+                </div>
+              </div>
+
+              {/* Danh sách đề thi & tình trạng theo dõi */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredQuizRecords.length === 0 ? (
+                  <div className="col-span-full py-12 text-center text-slate-400 text-xs bg-white rounded-2xl border border-slate-200">
+                    Không tìm thấy đề thi phù hợp với điều kiện tìm kiếm.
+                  </div>
+                ) : (
+                  filteredQuizRecords.map((rec) => {
+                    const percentDone = rec.totalAssigned > 0
+                      ? Math.min(100, Math.round((rec.completedCount / rec.totalAssigned) * 100))
+                      : 0;
+
+                    return (
+                      <div
+                        key={rec.quiz.id}
+                        className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs hover:border-indigo-300 transition-all flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <h4 className="font-bold text-slate-900 text-sm leading-snug">
+                              {rec.quiz.title}
+                            </h4>
+                            {rec.isPractice ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                                📝 Ôn tập
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300 shrink-0">
+                                🎯 Thi chính thức
+                              </span>
+                            )}
+                          </div>
+
+                          {rec.quiz.description && (
+                            <p className="text-xs text-slate-500 line-clamp-2 mb-3">
+                              {rec.quiz.description}
+                            </p>
+                          )}
+
+                          <div className="grid grid-cols-3 gap-2 py-2.5 px-3 rounded-xl bg-slate-50 border border-slate-100 text-center mb-3">
+                            <div>
+                              <div className="text-[10px] text-slate-500 font-semibold uppercase">Số câu</div>
+                              <div className="text-sm font-black text-slate-800">
+                                {rec.quiz.questions?.length || 0}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-slate-500 font-semibold uppercase">Thời gian</div>
+                              <div className="text-sm font-black text-slate-800">
+                                {rec.quiz.durationMinutes}p
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-slate-500 font-semibold uppercase">Điểm đạt</div>
+                              <div className="text-sm font-black text-indigo-700">
+                                {rec.quiz.passScore}đ
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Tiến độ hoàn thành bài thi */}
+                          <div className="space-y-1.5 mb-3">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-semibold text-slate-700">Tiến độ nộp bài</span>
+                              <span className="font-bold text-slate-900">
+                                <b className="text-emerald-700">{rec.completedCount}</b> / {rec.totalAssigned} nhân sự ({percentDone}%)
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                              <div
+                                className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${percentDone}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+                              <span>Chưa làm: <b className="text-rose-600">{rec.uncompletedCount}</b></span>
+                              <span>Điểm TB: <b className="text-slate-800">{rec.avgScore !== null ? `${rec.avgScore}đ` : '—'}</b></span>
+                              <span>Tỷ lệ đạt: <b className="text-emerald-700">{rec.passRate !== null ? `${rec.passRate}%` : '—'}</b></span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Nút hành động */}
+                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setViewUncompletedQuiz(rec.quiz);
+                              setUncompletedModalTab('UNCOMPLETED');
+                            }}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition-colors cursor-pointer"
+                          >
+                            <Users className="w-3.5 h-3.5" />
+                            <span>Theo dõi hoàn thành</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRecordSearch(rec.quiz.title);
+                              setRecordsSection('SUBMISSIONS');
+                            }}
+                            className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                            title="Xem tất cả bài nộp của đề thi này"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>{rec.submissions.length} bài nộp</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* PHÂN MỤC 3: TOÀN BỘ BÀI NỘP */}
+          {recordsSection === 'SUBMISSIONS' && (
+            <div className="space-y-4">
+              {/* BẢNG THỐNG KÊ ĐIỂM: GIỎI, KHÁ, TRUNG BÌNH, KHÔNG ĐẠT */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setScoreGradeFilter(scoreGradeFilter === 'GIOI' ? 'ALL' : 'GIOI')}
+                  className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+                    scoreGradeFilter === 'GIOI'
+                      ? 'bg-emerald-100 border-emerald-500 shadow-xs ring-2 ring-emerald-500/30'
+                      : 'bg-emerald-50/70 border-emerald-200 hover:bg-emerald-100/70'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-emerald-800 uppercase tracking-wide">Giỏi (≥ 85đ)</span>
+                    <Trophy className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="text-2xl font-black text-emerald-900">{gradeStats.gioi} <span className="text-xs font-normal text-emerald-700">bài</span></div>
+                  <div className="text-[11px] text-emerald-700 font-semibold mt-0.5">
+                    Chiếm {gradeStats.gioiPercent}% tổng số bài nộp
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setScoreGradeFilter(scoreGradeFilter === 'KHA' ? 'ALL' : 'KHA')}
+                  className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+                    scoreGradeFilter === 'KHA'
+                      ? 'bg-blue-100 border-blue-500 shadow-xs ring-2 ring-blue-500/30'
+                      : 'bg-blue-50/70 border-blue-200 hover:bg-blue-100/70'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-blue-800 uppercase tracking-wide">Khá (70–84đ)</span>
+                    <Medal className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div className="text-2xl font-black text-blue-900">{gradeStats.kha} <span className="text-xs font-normal text-blue-700">bài</span></div>
+                  <div className="text-[11px] text-blue-700 font-semibold mt-0.5">
+                    Chiếm {gradeStats.khaPercent}% tổng số bài nộp
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setScoreGradeFilter(scoreGradeFilter === 'TRUNG_BINH' ? 'ALL' : 'TRUNG_BINH')}
+                  className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+                    scoreGradeFilter === 'TRUNG_BINH'
+                      ? 'bg-amber-100 border-amber-500 shadow-xs ring-2 ring-amber-500/30'
+                      : 'bg-amber-50/70 border-amber-200 hover:bg-amber-100/70'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-amber-800 uppercase tracking-wide">Trung bình (50–69đ)</span>
+                    <Award className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="text-2xl font-black text-amber-900">{gradeStats.tb} <span className="text-xs font-normal text-amber-700">bài</span></div>
+                  <div className="text-[11px] text-amber-700 font-semibold mt-0.5">
+                    Chiếm {gradeStats.tbPercent}% tổng số bài nộp
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setScoreGradeFilter(scoreGradeFilter === 'KHONG_DAT' ? 'ALL' : 'KHONG_DAT')}
+                  className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+                    scoreGradeFilter === 'KHONG_DAT'
+                      ? 'bg-rose-100 border-rose-500 shadow-xs ring-2 ring-rose-500/30'
+                      : 'bg-rose-50/70 border-rose-200 hover:bg-rose-100/70'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-rose-800 uppercase tracking-wide">Không đạt (&lt; 50đ)</span>
+                    <XCircle className="w-4 h-4 text-rose-600" />
+                  </div>
+                  <div className="text-2xl font-black text-rose-900">{gradeStats.kd} <span className="text-xs font-normal text-rose-700">bài</span></div>
+                  <div className="text-[11px] text-rose-700 font-semibold mt-0.5">
+                    Chiếm {gradeStats.kdPercent}% tổng số bài nộp
+                  </div>
+                </button>
+              </div>
+
+              {/* Thanh tìm kiếm & lọc */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-80">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Tìm theo tên nhân sự, phòng ban, bài thi..."
+                      value={recordSearch}
+                      onChange={(e) => setRecordSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+
+                  {scoreGradeFilter !== 'ALL' && (
+                    <button
+                      type="button"
+                      onClick={() => setScoreGradeFilter('ALL')}
+                      className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1 transition-colors whitespace-nowrap"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Xóa lọc xếp loại</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                  <span className="text-xs text-slate-500 font-medium">
+                    Hiển thị <b>{filteredSubmissions.length}</b> / <b>{submissions.length}</b> bản ghi
+                  </span>
+                </div>
+              </div>
+
+              {/* Bảng chi tiết toàn bộ bài nộp */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs sm:text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold text-[11px] uppercase tracking-wider">
+                        <th className="py-3 px-4">Nhân sự</th>
+                        <th className="py-3 px-4">Phòng ban</th>
+                        <th className="py-3 px-4">Đề thi</th>
+                        <th className="py-3 px-4">Phân loại</th>
+                        <th className="py-3 px-4">Điểm số</th>
+                        <th className="py-3 px-4">Xếp loại</th>
+                        <th className="py-3 px-4">Thời gian nộp</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredSubmissions.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-10 text-center text-slate-400 text-xs">
+                            Không có bài nộp nào phù hợp với bộ lọc.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredSubmissions.map((sub) => {
+                          const gradeInfo = getScoreGrade(sub.score);
+                          const isPractice = Boolean(sub.isPractice || sub.examType === 'PRACTICE');
+
+                          return (
+                            <tr key={sub.id} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="py-3.5 px-4 font-bold text-slate-900">{sub.employeeName}</td>
+                              <td className="py-3.5 px-4 text-slate-600">{sub.department}</td>
+                              <td className="py-3.5 px-4 text-slate-800 font-medium">{sub.quizTitle}</td>
+                              <td className="py-3.5 px-4">
+                                {isPractice ? (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                                    Ôn tập
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200">
+                                    Thi chính thức
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span className={`font-black text-sm ${sub.score >= 50 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                  {sub.score} / 100
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span
+                                  className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${gradeInfo.badgeClass}`}
+                                >
+                                  {gradeInfo.label} ({sub.competencyLevel})
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-slate-400 text-xs font-mono">{sub.submittedAt}</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL: CHI TIẾT LỊCH SỬ THI CỦA NHÂN SỰ */}
+          {selectedEmpQuizDetail && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+              <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-base shadow-xs">
+                      {selectedEmpQuizDetail.fullName ? selectedEmpQuizDetail.fullName.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                        <span>{selectedEmpQuizDetail.fullName}</span>
+                        <span className="text-xs font-normal text-slate-500 font-mono">
+                          ({selectedEmpQuizDetail.employeeCode || 'Chưa có mã'})
+                        </span>
+                      </h4>
+                      <div className="text-xs text-slate-500 flex items-center gap-2">
+                        <span>{selectedEmpQuizDetail.department || 'Tổ RTG'}</span>
+                        <span>•</span>
+                        <span>Điểm năng lực: <b className="text-indigo-700">{selectedEmpQuizDetail.competencyScore ?? 100}đ</b></span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEmpQuizDetail(null)}
+                    className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-5 overflow-y-auto space-y-4">
+                  {(() => {
+                    const empSubs = submissions.filter(
+                      (s) =>
+                        s.employeeId === selectedEmpQuizDetail.id ||
+                        (s.employeeName && s.employeeName.trim().toLowerCase() === selectedEmpQuizDetail.fullName.trim().toLowerCase())
+                    );
+                    const officialCount = empSubs.filter((s) => !s.isPractice && s.examType !== 'PRACTICE').length;
+                    const practiceCount = empSubs.filter((s) => s.isPractice || s.examType === 'PRACTICE').length;
+                    const avgScore = empSubs.length > 0 ? Math.round(empSubs.reduce((a, b) => a + b.score, 0) / empSubs.length) : 0;
+                    const highestScore = empSubs.length > 0 ? Math.max(...empSubs.map((s) => s.score)) : 0;
+
+                    return (
+                      <>
+                        <div className="grid grid-cols-4 gap-2.5 text-center">
+                          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                            <div className="text-[10px] text-slate-500 font-semibold uppercase">Tổng lần thi</div>
+                            <div className="text-lg font-black text-slate-800">{empSubs.length}</div>
+                          </div>
+                          <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-100">
+                            <div className="text-[10px] text-indigo-700 font-semibold uppercase">Thi chính thức</div>
+                            <div className="text-lg font-black text-indigo-900">{officialCount}</div>
+                          </div>
+                          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-100">
+                            <div className="text-[10px] text-amber-700 font-semibold uppercase">Ôn tập</div>
+                            <div className="text-lg font-black text-amber-900">{practiceCount}</div>
+                          </div>
+                          <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100">
+                            <div className="text-[10px] text-emerald-700 font-semibold uppercase">Điểm TB / Cao nhất</div>
+                            <div className="text-lg font-black text-emerald-900">{avgScore} / {highestScore}</div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                            Lịch sử làm bài chi tiết ({empSubs.length})
+                          </h5>
+                          {empSubs.length === 0 ? (
+                            <div className="py-8 text-center text-slate-400 text-xs">
+                              Nhân sự chưa tham gia làm bài thi nào.
+                            </div>
+                          ) : (
+                            <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
+                              {empSubs.map((sub) => {
+                                const isPractice = Boolean(sub.isPractice || sub.examType === 'PRACTICE');
+                                const grade = getScoreGrade(sub.score);
+                                return (
+                                  <div key={sub.id} className="p-3.5 bg-white hover:bg-slate-50/70 transition-colors flex items-center justify-between gap-3">
+                                    <div className="space-y-1">
+                                      <div className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-2">
+                                        <span>{sub.quizTitle}</span>
+                                        {isPractice ? (
+                                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                                            Ôn tập
+                                          </span>
+                                        ) : (
+                                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 border border-indigo-300">
+                                            Thi chính thức
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[11px] text-slate-400 font-mono">
+                                        Thời gian: {sub.submittedAt}
+                                      </div>
+                                    </div>
+                                    <div className="text-right flex items-center gap-3 shrink-0">
+                                      <div>
+                                        <div className={`font-black text-sm ${sub.score >= 50 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                          {sub.score} / 100
+                                        </div>
+                                        <div className="text-[10px] text-slate-500 font-medium">
+                                          {grade.label}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+
+                <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEmpQuizDetail(null)}
+                    className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold transition-colors"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1593,10 +2272,46 @@ export const QuizView: React.FC<QuizViewProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Mô tả</label>
                 <input
                   type="text"
+                  placeholder="Nhập mô tả đề thi (tùy chọn)..."
                   value={newQuizDescription}
                   onChange={(e) => setNewQuizDescription(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500/20"
                 />
+                {/* 2 ô tích chọn: Ôn tập vs Thi chính thức */}
+                <div className="mt-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <span className="text-[11px] font-bold text-slate-700 shrink-0">Phân loại:</span>
+                  <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                    <input
+                      type="radio"
+                      name="examTypeOption"
+                      checked={newQuizExamType === 'PRACTICE'}
+                      onChange={() => setNewQuizExamType('PRACTICE')}
+                      className="w-4 h-4 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                      newQuizExamType === 'PRACTICE' ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'text-slate-600'
+                    }`}>
+                      Ôn tập
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-normal">(Thi không lưu điểm vào điểm năng lực)</span>
+                  </label>
+
+                  <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                    <input
+                      type="radio"
+                      name="examTypeOption"
+                      checked={newQuizExamType === 'OFFICIAL'}
+                      onChange={() => setNewQuizExamType('OFFICIAL')}
+                      className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                      newQuizExamType === 'OFFICIAL' ? 'bg-indigo-100 text-indigo-800 border border-indigo-300' : 'text-slate-600'
+                    }`}>
+                      Thi chính thức
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-normal">(Thi sẽ tính điểm vào điểm năng lực)</span>
+                  </label>
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -2888,30 +3603,54 @@ export const QuizView: React.FC<QuizViewProps> = ({
       {viewUncompletedQuiz && (() => {
         const modalTargets = getQuizTargetEmployees(viewUncompletedQuiz);
         const modalSubs = submissions.filter((s) => s.quizId === viewUncompletedQuiz.id);
-        const modalCompletedIds = new Set(modalSubs.map((s) => s.employeeId));
-        const modalUncompleted = modalTargets.filter((e) => !modalCompletedIds.has(e.id));
-        const filteredUncompleted = modalUncompleted.filter((e) => {
-          if (!uncompletedSearch.trim()) return true;
-          const q = uncompletedSearch.trim().toLowerCase();
+        const modalCompletedMap = new Map<string, QuizSubmission>();
+        modalSubs.forEach((s) => {
+          if (!modalCompletedMap.has(s.employeeId) || new Date(s.submittedAt).getTime() > new Date(modalCompletedMap.get(s.employeeId)!.submittedAt).getTime()) {
+            modalCompletedMap.set(s.employeeId, s);
+          }
+        });
+        const modalCompletedEmployees = modalTargets.filter((e) => modalCompletedMap.has(e.id));
+        const modalUncompleted = modalTargets.filter((e) => !modalCompletedMap.has(e.id));
+
+        const q = uncompletedSearch.trim().toLowerCase();
+        const matchesQuery = (e: Employee) => {
+          if (!q) return true;
           return (
             e.fullName.toLowerCase().includes(q) ||
             (e.employeeCode || '').toLowerCase().includes(q) ||
             (e.department || '').toLowerCase().includes(q) ||
             (e.position || '').toLowerCase().includes(q)
           );
-        });
+        };
 
-        const handleCopyUncompletedList = () => {
-          let txt = `DANH SÁCH NHÂN SỰ CHƯA HOÀN THÀNH BÀI THI: ${viewUncompletedQuiz.title} (${viewUncompletedQuiz.code})\n`;
-          txt += `Tổng số chưa hoàn thành: ${modalUncompleted.length} / ${modalTargets.length} nhân sự\n`;
-          txt += `STT\tMã NV\tHọ và tên\tPhòng ban / Ca kíp\tChức danh\n`;
-          modalUncompleted.forEach((emp, i) => {
-            txt += `${i + 1}\t${emp.employeeCode || emp.id}\t${emp.fullName}\t${emp.department || ''}\t${emp.position || ''}\n`;
-          });
-          navigator.clipboard.writeText(txt).then(() => {
-            setCopiedUncompleted(true);
-            setTimeout(() => setCopiedUncompleted(false), 2000);
-          });
+        const filteredUncompleted = modalUncompleted.filter(matchesQuery);
+        const filteredCompleted = modalCompletedEmployees.filter(matchesQuery);
+
+        const handleCopyList = () => {
+          if (uncompletedModalTab === 'UNCOMPLETED') {
+            let txt = `DANH SÁCH NHÂN SỰ CHƯA HOÀN THÀNH BÀI THI: ${viewUncompletedQuiz.title} (${viewUncompletedQuiz.code})\n`;
+            txt += `Tổng số chưa hoàn thành: ${modalUncompleted.length} / ${modalTargets.length} nhân sự\n`;
+            txt += `STT\tMã NV\tHọ và tên\tPhòng ban / Ca kíp\tChức danh\n`;
+            modalUncompleted.forEach((emp, i) => {
+              txt += `${i + 1}\t${emp.employeeCode || emp.id}\t${emp.fullName}\t${emp.department || ''}\t${emp.position || ''}\n`;
+            });
+            navigator.clipboard.writeText(txt).then(() => {
+              setCopiedUncompleted(true);
+              setTimeout(() => setCopiedUncompleted(false), 2000);
+            });
+          } else {
+            let txt = `DANH SÁCH NHÂN SỰ ĐÃ NỘP BÀI THI: ${viewUncompletedQuiz.title} (${viewUncompletedQuiz.code})\n`;
+            txt += `Tổng số đã nộp: ${modalCompletedEmployees.length} / ${modalTargets.length} nhân sự\n`;
+            txt += `STT\tMã NV\tHọ và tên\tPhòng ban / Ca kíp\tChức danh\tĐiểm số\tXếp loại\tThời gian nộp\n`;
+            modalCompletedEmployees.forEach((emp, i) => {
+              const sub = modalCompletedMap.get(emp.id);
+              txt += `${i + 1}\t${emp.employeeCode || emp.id}\t${emp.fullName}\t${emp.department || ''}\t${emp.position || ''}\t${sub ? sub.score + 'đ' : '-'}\t${sub ? sub.competencyLevel : '-'}\t${sub?.submittedAt || '-'}\n`;
+            });
+            navigator.clipboard.writeText(txt).then(() => {
+              setCopiedUncompleted(true);
+              setTimeout(() => setCopiedUncompleted(false), 2000);
+            });
+          }
         };
 
         return (
@@ -2920,13 +3659,17 @@ export const QuizView: React.FC<QuizViewProps> = ({
               {/* Modal Header */}
               <div className="p-5 sm:p-6 border-b border-slate-200 flex items-center justify-between bg-slate-50">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold shadow-2xs">
-                    <UserX className="w-5 h-5" />
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold shadow-2xs ${
+                    uncompletedModalTab === 'UNCOMPLETED' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {uncompletedModalTab === 'UNCOMPLETED' ? <UserX className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
                   </div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                        TỔNG HỢP CÁC CÁ NHÂN CHƯA HOÀN THÀNH BÀI THI
+                        {uncompletedModalTab === 'UNCOMPLETED'
+                          ? 'TỔNG HỢP CÁC CÁ NHÂN CHƯA HOÀN THÀNH BÀI THI'
+                          : 'TỔNG HỢP CÁC CÁ NHÂN ĐÃ NỘP BÀI THI'}
                       </h3>
                       <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-800">
                         {viewUncompletedQuiz.code}
@@ -2934,7 +3677,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">
                       Đề thi: <b className="text-slate-800">{viewUncompletedQuiz.title}</b> • Đã nộp:{' '}
-                      <b className="text-emerald-700">{modalCompletedIds.size} / {modalTargets.length}</b> bài ({Math.round((modalCompletedIds.size / Math.max(1, modalTargets.length)) * 100)}%)
+                      <b className="text-emerald-700">{modalCompletedEmployees.length} / {modalTargets.length}</b> bài ({Math.round((modalCompletedEmployees.length / Math.max(1, modalTargets.length)) * 100)}%) • Chưa nộp: <b className="text-rose-700">{modalUncompleted.length}</b>
                     </p>
                   </div>
                 </div>
@@ -2948,27 +3691,60 @@ export const QuizView: React.FC<QuizViewProps> = ({
                 </button>
               </div>
 
-              {/* Modal Toolbar */}
+              {/* Modal Toolbar with 2 buttons */}
               <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-white">
-                <div className="relative w-full sm:w-80">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Tìm theo tên, mã NV, phòng ban..."
-                    value={uncompletedSearch}
-                    onChange={(e) => setUncompletedSearch(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  />
+                <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Tìm theo tên, mã NV, phòng ban..."
+                      value={uncompletedSearch}
+                      onChange={(e) => setUncompletedSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  {/* 2 NÚT CHỌN: NHÂN SỰ CHƯA LÀM & NHÂN SỰ ĐÃ NỘP BÀI */}
+                  <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => setUncompletedModalTab('UNCOMPLETED')}
+                      className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        uncompletedModalTab === 'UNCOMPLETED'
+                          ? 'bg-white text-rose-700 shadow-2xs border border-rose-200'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <UserX className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Nhân sự chưa làm</span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-100 text-rose-800 font-black">
+                        {modalUncompleted.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setUncompletedModalTab('COMPLETED')}
+                      className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        uncompletedModalTab === 'COMPLETED'
+                          ? 'bg-white text-emerald-700 shadow-2xs border border-emerald-200'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Nhân sự đã nộp bài</span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-black">
+                        {modalCompletedEmployees.length}
+                      </span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                  <span className="text-xs font-bold text-rose-700 bg-rose-50 px-3 py-1 rounded-xl border border-rose-200">
-                    Chưa nộp: {modalUncompleted.length} nhân sự
-                  </span>
-
                   <button
                     type="button"
-                    onClick={handleCopyUncompletedList}
+                    onClick={handleCopyList}
                     className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
                   >
                     {copiedUncompleted ? (
@@ -2979,7 +3755,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                     ) : (
                       <>
                         <Copy className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Sao chép danh sách</span>
+                        <span>{uncompletedModalTab === 'UNCOMPLETED' ? 'Sao chép chưa làm' : 'Sao chép đã nộp'}</span>
                       </>
                     )}
                   </button>
@@ -2988,63 +3764,139 @@ export const QuizView: React.FC<QuizViewProps> = ({
 
               {/* Modal Table */}
               <div className="overflow-y-auto flex-1 p-4">
-                {filteredUncompleted.length === 0 ? (
-                  <div className="text-center py-12 text-slate-400 text-xs">
-                    {modalUncompleted.length === 0
-                      ? '🎉 Tất cả nhân viên thuộc đối tượng đã hoàn thành bài thi!'
-                      : `Không tìm thấy nhân viên nào phù hợp với từ khóa "${uncompletedSearch}".`}
-                  </div>
-                ) : (
-                  <table className="w-full border-collapse border border-slate-200 text-xs">
-                    <thead>
-                      <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                        <th className="border border-slate-200 px-3 py-2 text-center w-12">STT</th>
-                        <th className="border border-slate-200 px-3 py-2 text-left">Mã nhân viên</th>
-                        <th className="border border-slate-200 px-3 py-2 text-left">Họ và tên</th>
-                        <th className="border border-slate-200 px-3 py-2 text-left">Phòng ban / Ca kíp</th>
-                        <th className="border border-slate-200 px-3 py-2 text-left">Chức danh / Vị trí</th>
-                        <th className="border border-slate-200 px-3 py-2 text-center">Trạng thái</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredUncompleted.map((emp, idx) => (
-                        <tr
-                          key={emp.id}
-                          className={`hover:bg-rose-50/30 transition-colors ${
-                            idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
-                          }`}
-                        >
-                          <td className="border border-slate-200 px-3 py-2.5 text-center text-slate-500 font-mono">
-                            {idx + 1}
-                          </td>
-                          <td className="border border-slate-200 px-3 py-2.5 font-mono font-semibold text-slate-700">
-                            {emp.employeeCode || emp.id}
-                          </td>
-                          <td className="border border-slate-200 px-3 py-2.5 font-bold text-slate-900">
-                            {emp.fullName}
-                          </td>
-                          <td className="border border-slate-200 px-3 py-2.5 text-slate-600">
-                            {emp.department || '-'}
-                          </td>
-                          <td className="border border-slate-200 px-3 py-2.5 text-slate-600">
-                            {emp.position || '-'}
-                          </td>
-                          <td className="border border-slate-200 px-3 py-2.5 text-center">
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
-                              Chưa làm bài
-                            </span>
-                          </td>
+                {uncompletedModalTab === 'UNCOMPLETED' ? (
+                  filteredUncompleted.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 text-xs">
+                      {modalUncompleted.length === 0
+                        ? '🎉 Tất cả nhân viên thuộc đối tượng đã hoàn thành bài thi!'
+                        : `Không tìm thấy nhân viên nào phù hợp với từ khóa "${uncompletedSearch}".`}
+                    </div>
+                  ) : (
+                    <table className="w-full border-collapse border border-slate-200 text-xs">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                          <th className="border border-slate-200 px-3 py-2 text-center w-12">STT</th>
+                          <th className="border border-slate-200 px-3 py-2 text-left">Mã nhân viên</th>
+                          <th className="border border-slate-200 px-3 py-2 text-left">Họ và tên</th>
+                          <th className="border border-slate-200 px-3 py-2 text-left">Phòng ban / Ca kíp</th>
+                          <th className="border border-slate-200 px-3 py-2 text-left">Chức danh / Vị trí</th>
+                          <th className="border border-slate-200 px-3 py-2 text-center">Trạng thái</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {filteredUncompleted.map((emp, idx) => (
+                          <tr
+                            key={emp.id}
+                            className={`hover:bg-rose-50/30 transition-colors ${
+                              idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                            }`}
+                          >
+                            <td className="border border-slate-200 px-3 py-2.5 text-center text-slate-500 font-mono">
+                              {idx + 1}
+                            </td>
+                            <td className="border border-slate-200 px-3 py-2.5 font-mono font-semibold text-slate-700">
+                              {emp.employeeCode || emp.id}
+                            </td>
+                            <td className="border border-slate-200 px-3 py-2.5 font-bold text-slate-900">
+                              {emp.fullName}
+                            </td>
+                            <td className="border border-slate-200 px-3 py-2.5 text-slate-600">
+                              {emp.department || '-'}
+                            </td>
+                            <td className="border border-slate-200 px-3 py-2.5 text-slate-600">
+                              {emp.position || '-'}
+                            </td>
+                            <td className="border border-slate-200 px-3 py-2.5 text-center">
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                Chưa làm bài
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+                ) : (
+                  filteredCompleted.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 text-xs">
+                      {modalCompletedEmployees.length === 0
+                        ? 'Chưa có nhân sự nào nộp bài thi này.'
+                        : `Không tìm thấy nhân viên nào phù hợp với từ khóa "${uncompletedSearch}".`}
+                    </div>
+                  ) : (
+                    <table className="w-full border-collapse border border-slate-200 text-xs">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                          <th className="border border-slate-200 px-3 py-2 text-center w-12">STT</th>
+                          <th className="border border-slate-200 px-3 py-2 text-left">Mã nhân viên</th>
+                          <th className="border border-slate-200 px-3 py-2 text-left">Họ và tên</th>
+                          <th className="border border-slate-200 px-3 py-2 text-left">Phòng ban / Ca kíp</th>
+                          <th className="border border-slate-200 px-3 py-2 text-center">Điểm số</th>
+                          <th className="border border-slate-200 px-3 py-2 text-center">Xếp loại</th>
+                          <th className="border border-slate-200 px-3 py-2 text-center">Thời gian nộp</th>
+                          <th className="border border-slate-200 px-3 py-2 text-center">Trạng thái</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredCompleted.map((emp, idx) => {
+                          const sub = modalCompletedMap.get(emp.id);
+                          const gradeInfo = sub ? getScoreGrade(sub.score) : null;
+                          return (
+                            <tr
+                              key={emp.id}
+                              className={`hover:bg-emerald-50/30 transition-colors ${
+                                idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                              }`}
+                            >
+                              <td className="border border-slate-200 px-3 py-2.5 text-center text-slate-500 font-mono">
+                                {idx + 1}
+                              </td>
+                              <td className="border border-slate-200 px-3 py-2.5 font-mono font-semibold text-slate-700">
+                                {emp.employeeCode || emp.id}
+                              </td>
+                              <td className="border border-slate-200 px-3 py-2.5 font-bold text-slate-900">
+                                {emp.fullName}
+                              </td>
+                              <td className="border border-slate-200 px-3 py-2.5 text-slate-600">
+                                {emp.department || '-'}
+                              </td>
+                              <td className="border border-slate-200 px-3 py-2.5 text-center font-black">
+                                <span className={sub && sub.score >= 50 ? 'text-emerald-700' : 'text-rose-600'}>
+                                  {sub ? `${sub.score} / 100` : '-'}
+                                </span>
+                              </td>
+                              <td className="border border-slate-200 px-3 py-2.5 text-center">
+                                {gradeInfo ? (
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${gradeInfo.badgeClass}`}>
+                                    {gradeInfo.label}
+                                  </span>
+                                ) : '-'}
+                              </td>
+                              <td className="border border-slate-200 px-3 py-2.5 text-center font-mono text-[11px] text-slate-500">
+                                {sub?.submittedAt ? sub.submittedAt.slice(0, 16).replace('T', ' ') : '-'}
+                              </td>
+                              <td className="border border-slate-200 px-3 py-2.5 text-center">
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  Đã nộp bài
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )
                 )}
               </div>
 
               {/* Modal Footer */}
               <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
                 <div>
-                  Đang hiển thị <b>{filteredUncompleted.length}</b> / <b>{modalUncompleted.length}</b> người chưa làm
+                  {uncompletedModalTab === 'UNCOMPLETED' ? (
+                    <>Đang hiển thị <b>{filteredUncompleted.length}</b> / <b>{modalUncompleted.length}</b> người chưa làm</>
+                  ) : (
+                    <>Đang hiển thị <b>{filteredCompleted.length}</b> / <b>{modalCompletedEmployees.length}</b> người đã nộp</>
+                  )}
                 </div>
                 <button
                   type="button"

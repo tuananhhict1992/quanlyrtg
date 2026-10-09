@@ -245,6 +245,12 @@ export default function App() {
     return Array.from(listMap.values());
   }, [incidents, employees]);
 
+  // Danh sách nhân sự hiển thị (Lọc nhân sự ẩn / tài khoản test đối với các tài khoản không phải Quản trị viên Admin)
+  const visibleEmployees = React.useMemo(() => {
+    if (currentUser?.role === 'ADMIN') return employees;
+    return employees.filter((e) => !e.isHidden || e.id === currentUser?.id);
+  }, [employees, currentUser]);
+
   // Logout Handler
   const handleLogout = async () => {
     try {
@@ -973,7 +979,8 @@ export default function App() {
     employeeId: string,
     newPermissions: PermissionKey[],
     newVisibleTabs?: TabType[],
-    managedDepartments?: string[]
+    managedDepartments?: string[],
+    isHidden?: boolean
   ) => {
     const toastId = addToast('loading', 'Đang lưu phân quyền vào Cloud PostgreSQL...', 0);
     try {
@@ -986,6 +993,9 @@ export default function App() {
       if (managedDepartments !== undefined) {
         updateData.managedDepartments = managedDepartments;
       }
+      if (isHidden !== undefined) {
+        updateData.isHidden = isHidden;
+      }
       await updateDocumentFields('employees', employeeId, updateData);
 
       // Local state sync
@@ -997,6 +1007,7 @@ export default function App() {
                 assignedPermissions: newPermissions,
                 ...(newVisibleTabs !== undefined ? { visibleTabs: newVisibleTabs } : {}),
                 ...(managedDepartments !== undefined ? { managedDepartments } : {}),
+                ...(isHidden !== undefined ? { isHidden } : {}),
               }
             : e
         )
@@ -1010,6 +1021,7 @@ export default function App() {
                 assignedPermissions: newPermissions,
                 ...(newVisibleTabs !== undefined ? { visibleTabs: newVisibleTabs } : {}),
                 ...(managedDepartments !== undefined ? { managedDepartments } : {}),
+                ...(isHidden !== undefined ? { isHidden } : {}),
               }
             : null
         );
@@ -1553,8 +1565,8 @@ export default function App() {
           ).length
         }
         onToggleChat={() => setIsQuickChatOpen((prev) => !prev)}
-        totalZaloSynced={employees.filter((e) => e.zaloSynced).length}
-        totalEmployees={employees.length}
+        totalZaloSynced={visibleEmployees.filter((e) => e.zaloSynced).length}
+        totalEmployees={visibleEmployees.length}
         PostgreSQLOnline={!dataLoading}
       />
 
@@ -1605,7 +1617,7 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <DashboardView
               currentUser={currentUser}
-              employees={employees}
+              employees={visibleEmployees}
               documents={documents}
               quizzes={quizzes}
               submissions={submissions}
@@ -1620,7 +1632,7 @@ export default function App() {
 
           {activeTab === 'hr' && (
             <HrManagementView
-              employees={employees}
+              employees={visibleEmployees}
               currentUser={currentUser}
               appSettings={appSettings}
               onSaveAppSettings={handleSaveAppSettings}
@@ -1644,7 +1656,7 @@ export default function App() {
           {activeTab === 'violations' && (
             <ViolationsView
               currentUser={currentUser}
-              employees={employees}
+              employees={visibleEmployees}
               incidents={incidents}
               onNotifyZalo={incident => setInternalDraft({source: {module: 'incidents', id: incident.id},
                 title: 'Thông báo xử lý vi phạm RTG — ' + incident.code,
@@ -1684,7 +1696,7 @@ export default function App() {
               onDeleteQuestionFolder={handleDeleteQuestionFolder}
               submissions={submissions}
               currentUser={currentUser}
-              allEmployees={employees}
+              allEmployees={visibleEmployees}
               onSaveSubmission={handleSaveSubmission}
               onAddQuiz={handleAddQuiz}
               onEditQuiz={handleEditQuiz}
@@ -1701,7 +1713,7 @@ export default function App() {
             <FeedbackView
               feedbacks={feedbacks}
               currentUser={currentUser}
-              employees={employees}
+              employees={visibleEmployees}
               appSettings={appSettings}
               onSaveAppSettings={handleSaveAppSettings}
               onAddFeedback={handleAddFeedback}
@@ -1718,7 +1730,7 @@ export default function App() {
 
           {activeTab === 'zalo' && (
             <ZaloView
-              employees={employees}
+              employees={visibleEmployees}
               currentUser={currentUser}
               messages={zaloMessages}
               onSendMessage={handleSendMessage}
@@ -1754,7 +1766,7 @@ export default function App() {
 
           {activeTab === 'bxxl' && (
             <BxxlView
-              employees={employees}
+              employees={visibleEmployees}
               currentUser={currentUser}
               bxxlRecords={bxxlRecords}
               onSaveBxxlRecord={handleSaveBxxlRecord}
@@ -1772,7 +1784,7 @@ export default function App() {
           {(activeTab === 'leave') && (
             <LeaveRegistrationView
               currentUser={currentUser}
-              employees={employees}
+              employees={visibleEmployees}
               leaveRequests={leaveRequests}
               onCreateLeaveRequest={handleCreateLeaveRequest}
               onApproveLeaveRequest={handleApproveLeaveRequest}
@@ -1785,7 +1797,7 @@ export default function App() {
           {activeTab === 'competency_rules' && (
             <CompetencyStandardsView
               currentUser={currentUser}
-              employees={employees}
+              employees={visibleEmployees}
               appSettings={appSettings || undefined}
               onSaveAppSettings={handleSaveAppSettings}
               onBackToDashboard={() => setActiveTab('dashboard')}
@@ -1842,8 +1854,8 @@ export default function App() {
       {currentUser && (
         <QuickChatWindow
           currentUser={currentUser}
-          allEmployees={employees}
-          employees={employees}
+          allEmployees={visibleEmployees}
+          employees={visibleEmployees}
           messages={zaloMessages}
           onSendMessage={handleSendMessage}
           isOpen={isQuickChatOpen}

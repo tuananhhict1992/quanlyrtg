@@ -150,6 +150,7 @@ examsRouter.post(
       if (!answers || Array.isArray(answers) || typeof answers !== "object")
         throw new HttpError(400, "Đáp án không hợp lệ.");
       const quiz = attempt.quiz,
+        isPractice = quiz?.examType === 'PRACTICE' || quiz?.isPractice === true,
         sub = {
           id: attempt.id,
           quizId: quiz.id,
@@ -161,6 +162,8 @@ examsRouter.post(
           ...gradeExam(quiz, answers),
           questions: quiz.questions,
           submittedAt: new Date().toISOString(),
+          isPractice,
+          examType: isPractice ? 'PRACTICE' : 'OFFICIAL',
         };
       await db.query(
         "insert into private.records(module,id,data,owner_id,checksum) values('quizSubmissions',$1,$2,$3,$4)",
@@ -170,14 +173,16 @@ examsRouter.post(
         "update private.exam_attempts set status='success',result=$2 where id=$1",
         [attempt.id, JSON.stringify(sub)],
       );
-      await db.query(
-        "update private.records set data=jsonb_set(jsonb_set(data,'{quizzesCompleted}',(select to_jsonb(count(*)) from private.records where module='quizSubmissions' and owner_id=$1)),'{competencyScore}',(select to_jsonb(round(avg((data->>'score')::numeric))) from private.records where module='quizSubmissions' and owner_id=$1)),updated_at=now() where module='employees' and id=$1",
-        [req.user.id],
-      );
+      if (!isPractice) {
+        await db.query(
+          "update private.records set data=jsonb_set(jsonb_set(data,'{quizzesCompleted}',(select to_jsonb(count(*)) from private.records where module='quizSubmissions' and owner_id=$1 and coalesce(data->>'isPractice','false')!='true')),'{competencyScore}',(select coalesce(to_jsonb(round(avg((data->>'score')::numeric))), data->'competencyScore') from private.records where module='quizSubmissions' and owner_id=$1 and coalesce(data->>'isPractice','false')!='true')),updated_at=now() where module='employees' and id=$1",
+          [req.user.id],
+        );
+      }
       await audit(db, req.user.id, "exam.submit", "quizSubmissions", sub.id);
       await enqueue(db, "quizSubmissions", sub.id, sub, req.user.id);
       await db.query(
-        "insert into public.record_changes(module) values('quizSubmissions'),('employees')",
+        "insert into public.record_changes(module) values('quizSubmissions')" + (isPractice ? "" : ",('employees')"),
       );
       return sub;
     });

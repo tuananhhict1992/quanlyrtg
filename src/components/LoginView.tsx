@@ -2,6 +2,7 @@ import { BrandLogo } from "./Brand";
 import React, { useState, useEffect, useRef } from "react";
 import { Employee } from "../types";
 import { loginWithGoogle, loginWithUsername, getApiBaseUrl } from "../services/supabase";
+import { safeAbortSignalAny, safeTimeoutSignal } from "../utils/polyfills";
 import {
   LogIn,
   Shield,
@@ -111,9 +112,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
     if (onClearAuthError) onClearAuthError();
 
     try {
-      await loginWithUsername(u, p, AbortSignal.any([controller.signal, AbortSignal.timeout(250_000)]));
-      localStorage.setItem('rtg_remember_login', 'true');
-      localStorage.setItem('rtg_saved_credentials', JSON.stringify({ username: u, password: p }));
+      await loginWithUsername(u, p, safeAbortSignalAny([controller.signal, safeTimeoutSignal(250_000)]));
+      try {
+        localStorage.setItem('rtg_remember_login', 'true');
+        localStorage.setItem('rtg_saved_credentials', JSON.stringify({ username: u, password: p }));
+      } catch {}
       setSavedAccount({ username: u, password: p });
     } catch (err: any) {
       if (!controller.signal.aborted) {
@@ -202,16 +205,18 @@ export const LoginView: React.FC<LoginViewProps> = ({
     if (onClearAuthError) onClearAuthError();
 
     try {
-      await loginWithUsername(input, password, AbortSignal.any([controller.signal, AbortSignal.timeout(250_000)]));
-      if (rememberMe) {
-        localStorage.setItem('rtg_remember_login', 'true');
-        localStorage.setItem('rtg_saved_credentials', JSON.stringify({ username: input, password: pass }));
-        setSavedAccount({ username: input, password: pass });
-      } else {
-        localStorage.removeItem('rtg_saved_credentials');
-        localStorage.setItem('rtg_remember_login', 'false');
-        setSavedAccount(null);
-      }
+      await loginWithUsername(input, password, safeAbortSignalAny([controller.signal, safeTimeoutSignal(250_000)]));
+      try {
+        if (rememberMe) {
+          localStorage.setItem('rtg_remember_login', 'true');
+          localStorage.setItem('rtg_saved_credentials', JSON.stringify({ username: input, password: pass }));
+          setSavedAccount({ username: input, password: pass });
+        } else {
+          localStorage.removeItem('rtg_saved_credentials');
+          localStorage.setItem('rtg_remember_login', 'false');
+          setSavedAccount(null);
+        }
+      } catch {}
     } catch (err: any) {
       if (!controller.signal.aborted) setError(err.name === 'TimeoutError' ? 'Hết thời gian chờ đăng nhập. Vui lòng thử lại sau.' : err instanceof TypeError ? 'Mất kết nối. Vui lòng kiểm tra mạng rồi thử đăng nhập lại.' : err.message || "Đăng nhập thất bại.");
     } finally {
