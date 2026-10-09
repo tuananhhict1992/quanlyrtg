@@ -196,7 +196,7 @@ examsRouter.post(
       );
       if (!isPractice) {
         await db.query(
-          "update private.records set data=jsonb_set(jsonb_set(data,'{quizzesCompleted}',(select to_jsonb(count(*)) from private.records where module='quizSubmissions' and owner_id=$1 and coalesce(data->>'isPractice','false')!='true')),'{competencyScore}',(select coalesce(to_jsonb(round(avg((data->>'score')::numeric))), data->'competencyScore') from private.records where module='quizSubmissions' and owner_id=$1 and coalesce(data->>'isPractice','false')!='true')),updated_at=now() where module='employees' and id=$1",
+          "update private.records set data=jsonb_set(jsonb_set(data,'{quizzesCompleted}',(select to_jsonb(count(*)) from private.records where module='quizSubmissions' and owner_id=$1 and coalesce(data->>'isPractice','false')!='true')),'{competencyScore}',coalesce((select to_jsonb(round(avg((data->>'score')::numeric))) from private.records where module='quizSubmissions' and owner_id=$1 and coalesce(data->>'isPractice','false')!='true'), data->'competencyScore', '100'::jsonb)),updated_at=now() where module='employees' and id=$1",
           [req.user.id],
         );
       }
