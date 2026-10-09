@@ -149,6 +149,30 @@ export function getQuizScheduleStatus(quiz: Quiz): {
   };
 }
 
+export const isQuestionMultiSelect = (q?: QuizQuestion | Omit<QuizQuestion, 'id'> | null): boolean => {
+  if (!q) return false;
+  if (q.questionType === 'MULTIPLE') return true;
+  if (Array.isArray(q.correctOptionIds) && q.correctOptionIds.length > 1) return true;
+  if (typeof q.correctOptionId === 'string' && q.correctOptionId.includes(',')) return true;
+  return false;
+};
+
+export const getQuestionCorrectOptionIds = (q?: QuizQuestion | Omit<QuizQuestion, 'id'> | null): string[] => {
+  if (!q) return [];
+  if (Array.isArray(q.correctOptionIds) && q.correctOptionIds.length > 0) return q.correctOptionIds;
+  if (typeof q.correctOptionId === 'string' && q.correctOptionId.trim()) {
+    return q.correctOptionId.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+  }
+  return [];
+};
+
+export const getAnswerIds = (ans: unknown): string[] => {
+  if (!ans) return [];
+  if (Array.isArray(ans)) return ans.map(s => String(s).trim()).filter(Boolean);
+  if (typeof ans === 'string') return ans.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+  return [];
+};
+
 interface QuizViewProps {
   quizzes: Quiz[];
   submissions: QuizSubmission[];

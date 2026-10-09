@@ -1,5 +1,6 @@
 import { parseWorkbook } from '../services/excelProcessing';
 import React, { useState, useRef, useMemo } from 'react';
+import type { Employee } from '../types';
 import {
   FileSpreadsheet,
   Upload,
@@ -168,10 +169,12 @@ export function formatYardTime(raw: any): string {
 }
 
 interface ContainerYardProcessorViewProps {
+  currentUser?: Employee | null;
   onBackToDashboard?: () => void;
 }
 
 export const ContainerYardProcessorView: React.FC<ContainerYardProcessorViewProps> = ({
+  currentUser,
   onBackToDashboard,
 }) => {
   const [isDragging, setIsDragging] = useState(false);

@@ -4,11 +4,39 @@ import type { QuizQuestion } from '../types';
 export type QuestionImportReport = { questions: QuizQuestion[]; detected: number; issues: string[] };
 const normalize=(value:unknown)=>String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[đĐ]/g,'d').toLowerCase().trim().replace(/\s+/g,' ');
 const cell=(value:unknown)=>String(value ?? '').trim();
+const ALPHABET='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+function extractAnswerLabels(answer: string): string[] {
+  const cleaned = answer.trim();
+  if (!cleaned) return [];
+  const prefixRemoved = cleaned.replace(/^(?:đáp án(?:\s+đúng)?|answer)\s*[:\-]?\s*/iu, '').trim();
+  if (!prefixRemoved) return [];
+  const tokens = prefixRemoved.split(/[,;+&]|\s+và\s+/iu).map(s => s.trim().replace(/[.)]$/, '')).filter(Boolean);
+  const labels: string[] = [];
+  for (const token of tokens) {
+    const m = token.toUpperCase().match(/^([A-Z])$/);
+    if (m) labels.push(m[1]);
+    else return [];
+  }
+  return Array.from(new Set(labels));
+}
+
 function question(text:string,answers:{label:string;text:string}[],answer:string,explanation='',citation=''):QuizQuestion {
-  const label=answer.trim().toUpperCase().match(/^(?:ĐÁP ÁN(?: ĐÚNG)?\s*[:\-]?\s*)?([A-J])[.)]?$/)?.[1];
-  const options=answers.map(a=>({id:'opt-'+a.label.toLowerCase(),text:a.text}));
-  const correct=answers.findIndex(a=>a.label===label);
-  return {id:'imp-'+crypto.randomUUID(),question:text,options,correctOptionId:correct>=0?options[correct].id:'',explanation,citation};
+  const labels = extractAnswerLabels(answer);
+  const options = answers.map(a=>({id:'opt-'+a.label.toLowerCase(),text:a.text}));
+  const matched = labels.map(l => options.find(o => o.id === 'opt-' + l.toLowerCase())?.id).filter(Boolean) as string[];
+  const isValid = matched.length === labels.length && labels.length > 0;
+  const correctOptionIds = isValid ? matched : [];
+  return {
+    id: 'imp-' + crypto.randomUUID(),
+    question: text,
+    options,
+    correctOptionId: correctOptionIds.join(','),
+    correctOptionIds,
+    questionType: correctOptionIds.length > 1 ? 'MULTIPLE' : 'SINGLE',
+    explanation,
+    citation
+  };
 }
 
 export function parseQuestionWorkbook(book:XLSX.WorkBook):QuestionImportReport {
@@ -24,9 +52,9 @@ export function parseQuestionWorkbook(book:XLSX.WorkBook):QuestionImportReport {
       const q=value(['cau hoi','noi dung cau hoi','question','noi dung']);
       if(!q){if(row.some(v=>cell(v)))report.issues.push(`${sheetName}, dòng ${index+1}: thiếu nội dung câu hỏi.`);continue;}
       report.detected++;
-      const options='ABCDEFGHIJ'.split('').map(label=>({label,text:value([label.toLowerCase(),...['lua chon ','phuong an ','dap an ','option '].map(p=>p+label.toLowerCase())])})).filter(o=>o.text);
+      const options=ALPHABET.map(label=>({label,text:value([label.toLowerCase(),...['lua chon ','phuong an ','dap an ','option '].map(p=>p+label.toLowerCase())])})).filter(o=>o.text);
       if(options.length<2){report.issues.push(`${sheetName}, dòng ${index+1}: câu hỏi thiếu lựa chọn, chưa đưa vào danh sách.`);continue;}
-      const answerIndex=columns.findIndex(h=>/^(dap an dung|dap an|answer|correct answer)(\s*\(.*\))?$/.test(h));
+      const answerIndex=columns.findIndex(h=>/^(dap an dung|dap an|answer|correct answer|cac dap an dung)(\s*\(.*\))?$/.test(h));
       const result=question(q,options,cell(row[answerIndex]),value(['giai thich','explanation']),value(['can cu quy che','can cu','citation']));
       if(!result.correctOptionId)report.issues.push(`${sheetName}, dòng ${index+1}: đáp án ${cell(row[answerIndex]) || '(trống)'} — cần rà soát trước khi lưu.`);
       report.questions.push(result);
@@ -43,7 +71,7 @@ export function parseQuestionText(raw:string):QuestionImportReport {
     const start=block.match(/^\s*(?:Câu(?:\s+hỏi)?|Question)\s*(\d+)\s*[.:)\-]\s*/iu);
     if(!start)continue;
     report.detected++;
-    const body=block.slice(start[0].length), optionPattern=/^\s*([A-J])[.)]\s*(.*)$/gm;
+    const body=block.slice(start[0].length), optionPattern=/^\s*([A-Z])[.)]\s*(.*)$/gm;
     const matches=[...body.matchAll(optionPattern)];
     if(matches.length<2){report.issues.push(`Câu ${start[1]}: chưa tách được các phương án trả lời.`);continue;}
     const metadata=body.match(/^\s*(?:Đáp án(?:\s+đúng)?|Answer)\s*[:\-]\s*([^\n]*)/im);

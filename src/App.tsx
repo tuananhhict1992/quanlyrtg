@@ -1777,6 +1777,7 @@ export default function App() {
 
           {activeTab === 'container_tool' && (
             <ContainerYardProcessorView
+              currentUser={currentUser}
               onBackToDashboard={() => setActiveTab('dashboard')}
             />
           )}

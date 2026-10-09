@@ -444,6 +444,8 @@ export interface QuizQuestion {
   question: string;
   options: { id: string; text: string }[];
   correctOptionId: string;
+  correctOptionIds?: string[];
+  questionType?: 'SINGLE' | 'MULTIPLE';
   explanation: string;
   citation: string; // E.g. "Căn cứ Điều 4, Khoản 2 - Nội quy Lao động 2026"
   folderId?: string; // Topic / Folder ID
@@ -497,7 +499,7 @@ export interface QuizSubmission {
   correctCount: number;
   passed: boolean;
   submittedAt: string;
-  answers: Record<string, string>;
+  answers: Record<string, string | string[]>;
   competencyLevel: 'Xuất sắc' | 'Đạt' | 'Cần đào tạo lại';
   questions?: QuizQuestion[];
 }

@@ -97,6 +97,7 @@ export function redact(value: any, answers = false): any {
             (!answers ||
               ![
                 "correctOptionId",
+                "correctOptionIds",
                 "explanation",
                 "correctAnswer",
                 "isCorrect",

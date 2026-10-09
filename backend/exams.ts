@@ -4,20 +4,41 @@ import { transaction, HttpError, asyncRoute } from "./db";
 import { redact, checksum } from "./security";
 import { audit, enqueue } from "./records";
 import { assignQuiz } from "./quiz-notifications";
-export function gradeExam(quiz: any, answers: Record<string, string>) {
+function getQuestionCorrectIds(q: any): string[] {
+  if (Array.isArray(q.correctOptionIds) && q.correctOptionIds.length > 0) {
+    return q.correctOptionIds.map((s: any) => String(s).trim()).filter(Boolean);
+  }
+  if (typeof q.correctOptionId === 'string' && q.correctOptionId.trim()) {
+    return q.correctOptionId.split(/[,;\s]+/).map((s: any) => String(s).trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function getUserAnswerIds(ans: any): string[] {
+  if (!ans) return [];
+  if (Array.isArray(ans)) return ans.map((s: any) => String(s).trim()).filter(Boolean);
+  if (typeof ans === 'string') {
+    return ans.split(/[,;\s]+/).map((s: any) => String(s).trim()).filter(Boolean);
+  }
+  return [];
+}
+
+export function gradeExam(quiz: any, answers: Record<string, any>) {
   if (!quiz.questions?.length)
     throw new HttpError(409, "Đề thi chưa có câu hỏi.");
   if (
-    quiz.questions.some(
-      (q: any) =>
-        !q.correctOptionId ||
-        !q.options?.some((o: any) => o.id === q.correctOptionId),
-    )
+    quiz.questions.some((q: any) => {
+      const correctIds = getQuestionCorrectIds(q);
+      return !correctIds.length || !correctIds.every((cid: string) => q.options?.some((o: any) => o.id === cid));
+    })
   )
     throw new HttpError(409, "Đề thi thiếu đáp án hợp lệ.");
-  const correctCount = quiz.questions.filter(
-      (q: any) => answers[q.id] === q.correctOptionId,
-    ).length,
+  const correctCount = quiz.questions.filter((q: any) => {
+    const correct = getQuestionCorrectIds(q).sort();
+    const user = getUserAnswerIds(answers[q.id]).sort();
+    if (!correct.length || !user.length) return false;
+    return correct.length === user.length && correct.every((val, idx) => val === user[idx]);
+  }).length,
     totalQuestions = quiz.questions.length,
     score = Math.round((correctCount / totalQuestions) * 100),
     passed = score >= quiz.passScore;

@@ -4,14 +4,36 @@ import { assertPermission, checksum } from './security';
 
 const text = (value: unknown) => String(value ?? '').normalize('NFC').trim();
 export function validateBankQuestion(input: any) {
-  if (!input || !text(input.question) || text(input.question).length > 20000 || !Array.isArray(input.options) || input.options.length < 2 || input.options.length > 10 ||
+  if (!input || !text(input.question) || text(input.question).length > 20000 || !Array.isArray(input.options) || input.options.length < 2 || input.options.length > 50 ||
     input.options.some((o:any)=>!o || !text(o.id) || !text(o.text) || text(o.text).length>10000) ||
-    new Set(input.options.map((o:any)=>o.id)).size !== input.options.length || !input.options.some((o:any)=>o.id===input.correctOptionId))
-    throw new HttpError(400,'Câu hỏi cần nội dung, ít nhất hai lựa chọn và một đáp án đúng hợp lệ.');
-  return {question:text(input.question),options:input.options.map((o:any)=>({id:text(o.id),text:text(o.text)})),correctOptionId:input.correctOptionId,
-    explanation:text(input.explanation),citation:text(input.citation)};
+    new Set(input.options.map((o:any)=>o.id)).size !== input.options.length)
+    throw new HttpError(400,'Câu hỏi cần nội dung, ít nhất hai lựa chọn hợp lệ.');
+
+  const correctIds: string[] = Array.isArray(input.correctOptionIds) && input.correctOptionIds.length > 0
+    ? input.correctOptionIds.map((s: any) => text(s)).filter(Boolean)
+    : typeof input.correctOptionId === 'string' && text(input.correctOptionId)
+      ? text(input.correctOptionId).split(/[,;\s]+/).map((s: string) => text(s)).filter(Boolean)
+      : [];
+
+  if (!correctIds.length || !correctIds.every((cid: string) => input.options.some((o: any) => o.id === cid)))
+    throw new HttpError(400,'Câu hỏi cần ít nhất một đáp án đúng hợp lệ nằm trong các lựa chọn.');
+
+  return {
+    question: text(input.question),
+    options: input.options.map((o:any)=>({id:text(o.id),text:text(o.text)})),
+    correctOptionId: text(input.correctOptionId) || correctIds.join(','),
+    correctOptionIds: correctIds,
+    questionType: correctIds.length > 1 ? 'MULTIPLE' : 'SINGLE',
+    explanation: text(input.explanation),
+    citation: text(input.citation)
+  };
 }
-const identity = (q:any,folderId:string) => checksum([folderId,text(q.question),q.options.map((o:any)=>text(o.text)),q.options.findIndex((o:any)=>o.id===q.correctOptionId)]);
+const identity = (q:any,folderId:string) => {
+  const correct = (Array.isArray(q.correctOptionIds) && q.correctOptionIds.length
+    ? q.correctOptionIds
+    : (q.correctOptionId ? String(q.correctOptionId).split(/[,;\s]+/) : [])).map((s: string) => text(s)).filter(Boolean).sort();
+  return checksum([folderId, text(q.question), q.options.map((o:any)=>text(o.text)), correct]);
+};
 
 // A single database transaction commits the complete reviewed import, including
 // its receipt. Retrying the same job cannot partially save or duplicate questions.

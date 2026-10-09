@@ -198,7 +198,15 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
     if(saving.current)return;
     const questions=generatedQuestions.filter((_,idx)=>selectedQuestionIndices[idx]);
     if(!questions.length){setErrorMessage('Vui lòng chọn ít nhất một câu hỏi.');return;}
-    const invalid=questions.filter(q=>!q.question.trim() || q.options.length<2 || q.options.some(o=>!o.text.trim()) || !q.options.some(o=>o.id===q.correctOptionId));
+    const getValidOptionIds = (q: QuizQuestion) => {
+      if (Array.isArray(q.correctOptionIds) && q.correctOptionIds.length > 0) return q.correctOptionIds;
+      if (q.correctOptionId) return q.correctOptionId.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+      return [];
+    };
+    const invalid=questions.filter(q=> {
+      const cids = getValidOptionIds(q);
+      return !q.question.trim() || q.options.length<2 || q.options.some(o=>!o.text.trim()) || !cids.length || !cids.every(cid => q.options.some(o => o.id === cid));
+    });
     if(invalid.length){setErrorMessage('Còn '+invalid.length+' câu thiếu nội dung/lựa chọn/đáp án đúng. Hãy sửa hoặc bỏ chọn trước khi lưu.');return;}
     const key=JSON.stringify([targetFolderId,questions]);
     if(attempt.current?.key!==key)attempt.current={key,id:crypto.randomUUID()};
@@ -507,37 +515,88 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                               </div>
 
                               <div className="space-y-1.5 mb-2 pl-2 border-l-2 border-slate-100">
-                                {q.options.map((opt, oIdx) => (
-                                  <div key={opt.id} className="flex items-center gap-2 text-xs">
-                                    <input
-                                      type="radio"
-                                      name={`review-correct-${q.id}`}
-                                      checked={q.correctOptionId === opt.id}
-                                      onChange={() => {
-                                        const updated = [...generatedQuestions];
-                                        updated[idx].correctOptionId = opt.id;
-                                        setGeneratedQuestions(updated);
-                                      }}
-                                      className="text-indigo-600"
-                                    />
-                                    <span className="text-[11px] font-bold text-slate-500 w-4">
-                                      {String.fromCharCode(65 + oIdx)}.
-                                    </span>
-                                    <input
-                                      value={opt.text}
-                                      onChange={(e) => {
-                                        const updated = [...generatedQuestions];
-                                        updated[idx].options[oIdx].text = e.target.value;
-                                        setGeneratedQuestions(updated);
-                                      }}
-                                      className={`flex-1 px-2 py-1 rounded-lg border text-xs ${
-                                        q.correctOptionId === opt.id
-                                          ? 'border-emerald-300 bg-emerald-50/50 font-medium text-emerald-900'
-                                          : 'border-slate-200 text-slate-700'
-                                      }`}
-                                    />
-                                  </div>
-                                ))}
+                                <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-1">
+                                  <span>Chọn các phương án đúng ({((q.correctOptionIds && q.correctOptionIds.length > 1) || (q.correctOptionId && q.correctOptionId.includes(','))) ? 'Nhiều đáp án' : '1 đáp án'}):</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...generatedQuestions];
+                                      const newLetter = String.fromCharCode(65 + updated[idx].options.length);
+                                      updated[idx].options.push({
+                                        id: `opt-${newLetter.toLowerCase()}`,
+                                        text: `Lựa chọn ${newLetter}`,
+                                      });
+                                      setGeneratedQuestions(updated);
+                                    }}
+                                    className="text-indigo-600 hover:text-indigo-800 text-[10px] font-bold flex items-center gap-0.5 cursor-pointer"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                    <span>Thêm phương án</span>
+                                  </button>
+                                </div>
+                                {q.options.map((opt, oIdx) => {
+                                  const currentCorrects = (q.correctOptionIds && q.correctOptionIds.length > 0)
+                                    ? q.correctOptionIds
+                                    : (q.correctOptionId ? q.correctOptionId.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean) : []);
+                                  const isOptCorrect = currentCorrects.includes(opt.id);
+
+                                  return (
+                                    <div key={opt.id} className="flex items-center gap-2 text-xs">
+                                      <input
+                                        type="checkbox"
+                                        checked={isOptCorrect}
+                                        onChange={(e) => {
+                                          const updated = [...generatedQuestions];
+                                          let nextCorrects: string[];
+                                          if (e.target.checked) {
+                                            nextCorrects = Array.from(new Set([...currentCorrects, opt.id]));
+                                          } else {
+                                            nextCorrects = currentCorrects.filter(id => id !== opt.id);
+                                          }
+                                          updated[idx].correctOptionIds = nextCorrects;
+                                          updated[idx].correctOptionId = nextCorrects.join(',');
+                                          updated[idx].questionType = nextCorrects.length > 1 ? 'MULTIPLE' : 'SINGLE';
+                                          setGeneratedQuestions(updated);
+                                        }}
+                                        className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                                        title="Đánh dấu phương án này là đáp án đúng"
+                                      />
+                                      <span className="text-[11px] font-bold text-slate-500 w-4">
+                                        {String.fromCharCode(65 + oIdx)}.
+                                      </span>
+                                      <input
+                                        value={opt.text}
+                                        onChange={(e) => {
+                                          const updated = [...generatedQuestions];
+                                          updated[idx].options[oIdx].text = e.target.value;
+                                          setGeneratedQuestions(updated);
+                                        }}
+                                        className={`flex-1 px-2 py-1 rounded-lg border text-xs ${
+                                          isOptCorrect
+                                            ? 'border-emerald-300 bg-emerald-50/50 font-medium text-emerald-900'
+                                            : 'border-slate-200 text-slate-700'
+                                        }`}
+                                      />
+                                      {q.options.length > 2 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const updated = [...generatedQuestions];
+                                            updated[idx].options.splice(oIdx, 1);
+                                            const filteredCids = currentCorrects.filter(id => id !== opt.id);
+                                            updated[idx].correctOptionIds = filteredCids;
+                                            updated[idx].correctOptionId = filteredCids.join(',');
+                                            setGeneratedQuestions(updated);
+                                          }}
+                                          className="text-slate-400 hover:text-rose-500 p-0.5 text-xs cursor-pointer"
+                                          title="Xóa phương án này"
+                                        >
+                                          ✕
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
 
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
@@ -585,10 +644,10 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                     </div>
                     <div>
                       <h4 className="font-bold text-slate-900 text-sm">
-                        Mẫu bảng tính Excel chuẩn (.xlsx)
+                        Mẫu bảng tính Excel chuẩn (.xlsx) — Đa phương án & Nhiều đáp án
                       </h4>
                       <p className="text-[11px] text-slate-500">
-                        Điền nội dung, các lựa chọn và một đáp án đúng A/B/C/D
+                        Hỗ trợ không giới hạn phương án (A, B, C, D, E, F, G, H...) và chọn 1 hoặc nhiều đáp án đúng (ví dụ: B hoặc A, B, D).
                       </p>
                     </div>
                   </div>
@@ -611,6 +670,8 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                         <th className="p-2.5">Lựa chọn B</th>
                         <th className="p-2.5">Lựa chọn C</th>
                         <th className="p-2.5">Lựa chọn D</th>
+                        <th className="p-2.5">Lựa chọn E</th>
+                        <th className="p-2.5">Lựa chọn F...</th>
                         <th className="p-2.5">Đáp án đúng</th>
                         <th className="p-2.5">Giải thích</th>
                         <th className="p-2.5">Căn cứ quy chế</th>
@@ -618,11 +679,25 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-600">
                       <tr>
-                        <td className="p-2.5 font-medium">Giờ làm việc tiêu chuẩn hàng ngày...</td>
+                        <td className="p-2.5 font-medium">Quy định an toàn Tổ RTG (chọn nhiều đáp án)...</td>
+                        <td className="p-2.5">Kiểm tra phanh, cáp...</td>
+                        <td className="p-2.5">Đủ bảo hộ lao động...</td>
+                        <td className="p-2.5">Vận hành khi có người...</td>
+                        <td className="p-2.5">Thử còi báo, đèn...</td>
+                        <td className="p-2.5">Kiểm tra camera...</td>
+                        <td className="p-2.5 italic text-slate-400">(để trống nếu ko dùng)</td>
+                        <td className="p-2.5 font-bold text-emerald-700">A, B, D, E</td>
+                        <td className="p-2.5">Quy tắc an toàn RTG...</td>
+                        <td className="p-2.5">Điều 4, SOP-RTG-01</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-medium">Giờ làm việc tiêu chuẩn (chọn 1 đáp án)...</td>
                         <td className="p-2.5">08h00 - 17h00</td>
                         <td className="p-2.5">08h00 - 17h30</td>
                         <td className="p-2.5">08h30 - 18h00</td>
                         <td className="p-2.5">Linh hoạt</td>
+                        <td className="p-2.5 italic text-slate-400"></td>
+                        <td className="p-2.5 italic text-slate-400"></td>
                         <td className="p-2.5 font-bold text-emerald-700">B</td>
                         <td className="p-2.5">Nghỉ trưa 90 phút...</td>
                         <td className="p-2.5">Điều 1, NQ-01</td>
