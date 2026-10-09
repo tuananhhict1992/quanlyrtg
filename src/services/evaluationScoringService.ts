@@ -96,11 +96,13 @@ export function calculateEmployeeMonthlyScore(
   }
 
   // === NHÓM 2: KẾT QUẢ BÀI KIỂM TRA (TỐI ĐA 30Đ) ===
-  // Tìm các bài thi của nhân sự
+  // Tìm các bài thi của nhân sự (Chỉ tính các bài thi CHÍNH THỨC, loại trừ bài ôn tập)
   const empSubmissions = (context?.submissions || []).filter(
     (s) =>
-      s.employeeId === employee.id ||
-      s.employeeName?.toLowerCase() === employee.fullName?.toLowerCase()
+      (s.employeeId === employee.id ||
+      s.employeeName?.toLowerCase() === employee.fullName?.toLowerCase()) &&
+      !s.isPractice &&
+      s.examType !== 'PRACTICE'
   );
 
   let rawQuizScore = employee.competencyScore ?? 85;

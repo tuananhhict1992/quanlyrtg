@@ -35,6 +35,12 @@ interface AiQuestionImportModalProps {
   initialFileName?: string;
 }
 
+const getImportQuestionCorrectIds = (q: QuizQuestion): string[] => {
+  if (Array.isArray(q.correctOptionIds) && q.correctOptionIds.length > 0) return q.correctOptionIds;
+  if (q.correctOptionId) return q.correctOptionId.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+  return [];
+};
+
 export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
   isOpen,
   onClose,
@@ -198,13 +204,8 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
     if(saving.current)return;
     const questions=generatedQuestions.filter((_,idx)=>selectedQuestionIndices[idx]);
     if(!questions.length){setErrorMessage('Vui lòng chọn ít nhất một câu hỏi.');return;}
-    const getValidOptionIds = (q: QuizQuestion) => {
-      if (Array.isArray(q.correctOptionIds) && q.correctOptionIds.length > 0) return q.correctOptionIds;
-      if (q.correctOptionId) return q.correctOptionId.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
-      return [];
-    };
     const invalid=questions.filter(q=> {
-      const cids = getValidOptionIds(q);
+      const cids = getImportQuestionCorrectIds(q);
       return !q.question.trim() || q.options.length<2 || q.options.some(o=>!o.text.trim()) || !cids.length || !cids.every(cid => q.options.some(o => o.id === cid));
     });
     if(invalid.length){setErrorMessage('Còn '+invalid.length+' câu thiếu nội dung/lựa chọn/đáp án đúng. Hãy sửa hoặc bỏ chọn trước khi lưu.');return;}
@@ -468,7 +469,23 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
 
                   <div className="space-y-3">
                     <div className="flex flex-wrap gap-3 text-xs items-center">
-                      <button type="button" className="text-indigo-700 underline" onClick={()=>setSelectedQuestionIndices(Object.fromEntries(generatedQuestions.map((q,i)=>[i,q.options.some(o=>o.id===q.correctOptionId)])))}>Chỉ chọn câu có đáp án hợp lệ</button>
+                      <button
+                        type="button"
+                        className="text-indigo-700 underline font-semibold"
+                        onClick={() =>
+                          setSelectedQuestionIndices(
+                            Object.fromEntries(
+                              generatedQuestions.map((q, i) => {
+                                const cids = getImportQuestionCorrectIds(q);
+                                const isValid = cids.length > 0 && cids.every((cid) => q.options.some((o) => o.id === cid));
+                                return [i, isValid];
+                              })
+                            )
+                          )
+                        }
+                      >
+                        Chỉ chọn câu có đáp án hợp lệ
+                      </button>
                       <button type="button" className="text-indigo-700 underline" onClick={()=>setSelectedQuestionIndices(Object.fromEntries(generatedQuestions.map((_,i)=>[i,true])))}>Chọn tất cả</button>
                       <span>Trang {reviewPage+1}/{Math.max(1,Math.ceil(generatedQuestions.length/20))} · Tổng {generatedQuestions.length} câu</span>
                       <button type="button" disabled={reviewPage===0} onClick={()=>setReviewPage(p=>p-1)}>Trang trước</button>
@@ -502,7 +519,9 @@ export const AiQuestionImportModal: React.FC<AiQuestionImportModalProps> = ({
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700">
                                   Câu {idx + 1}
                                 </span>
-                                {!q.correctOptionId && <span className="text-xs text-rose-700">Cần kiểm tra đáp án</span>}
+                                {getImportQuestionCorrectIds(q).length === 0 && (
+                                  <span className="text-xs text-rose-700 font-semibold">Cần kiểm tra đáp án</span>
+                                )}
                                 <input
                                   value={q.question}
                                   onChange={(e) => {

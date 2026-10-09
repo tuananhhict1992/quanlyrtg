@@ -641,10 +641,25 @@ export const QuizView: React.FC<QuizViewProps> = ({
   };
 
   const handleSelectOption = (questionId: string, optionId: string) => {
-    setSelectedAnswers((prev) => ({
-      ...prev,
-      [questionId]: optionId,
-    }));
+    const q = selectedQuiz?.questions?.find((item) => item.id === questionId);
+    const isMulti = isQuestionMultiSelect(q);
+    if (isMulti) {
+      setSelectedAnswers((prev) => {
+        const currentIds = getAnswerIds(prev[questionId]);
+        const nextIds = currentIds.includes(optionId)
+          ? currentIds.filter((id) => id !== optionId)
+          : [...currentIds, optionId];
+        return {
+          ...prev,
+          [questionId]: nextIds.join(', '),
+        };
+      });
+    } else {
+      setSelectedAnswers((prev) => ({
+        ...prev,
+        [questionId]: optionId,
+      }));
+    }
   };
 
   const handleSubmitQuiz = async () => {
@@ -1305,7 +1320,22 @@ export const QuizView: React.FC<QuizViewProps> = ({
             </div>
 
             {/* Question Text */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-slate-500 uppercase">
+                  Câu {currentQuestionIdx + 1}
+                </span>
+                {isQuestionMultiSelect(selectedQuiz.questions[currentQuestionIdx]) ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-1">
+                    <CheckSquare className="w-3 h-3 text-purple-700" />
+                    <span>Chọn nhiều đáp án</span>
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                    Chọn 1 đáp án
+                  </span>
+                )}
+              </div>
               <h4 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
                 {selectedQuiz.questions[currentQuestionIdx]?.question}
               </h4>
@@ -1313,36 +1343,45 @@ export const QuizView: React.FC<QuizViewProps> = ({
 
             {/* Options List */}
             <div className="space-y-3">
-              {(selectedQuiz.questions[currentQuestionIdx]?.options || []).map((opt, i) => {
-                const isSelected =
-                  selectedAnswers[selectedQuiz.questions[currentQuestionIdx]?.id] === opt.id;
-                const letter = String.fromCharCode(65 + i);
+              {(() => {
+                const currentQ = selectedQuiz.questions[currentQuestionIdx];
+                const isMulti = isQuestionMultiSelect(currentQ);
+                const currentAnswerIds = getAnswerIds(selectedAnswers[currentQ?.id]);
 
-                return (
-                  <button
-                    key={opt.id}
-                    onClick={() =>
-                      handleSelectOption(selectedQuiz.questions[currentQuestionIdx]?.id, opt.id)
-                    }
-                    className={`w-full p-4 rounded-2xl text-left border transition-all flex items-start gap-3.5 ${
-                      isSelected
-                        ? 'bg-indigo-50/80 border-indigo-500 text-indigo-950 font-medium ring-1 ring-indigo-500/20'
-                        : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-800'
-                    }`}
-                  >
-                    <div
-                      className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 ${
+                return (currentQ?.options || []).map((opt, i) => {
+                  const isSelected = currentAnswerIds.includes(opt.id);
+                  const letter = String.fromCharCode(65 + i);
+
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() =>
+                        handleSelectOption(currentQ?.id, opt.id)
+                      }
+                      className={`w-full p-4 rounded-2xl text-left border transition-all flex items-start gap-3.5 cursor-pointer ${
                         isSelected
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-slate-100 text-slate-600'
+                          ? 'bg-indigo-50/80 border-indigo-500 text-indigo-950 font-medium ring-1 ring-indigo-500/20'
+                          : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-800'
                       }`}
                     >
-                      {letter}
-                    </div>
-                    <span className="text-xs sm:text-sm leading-relaxed">{opt.text}</span>
-                  </button>
-                );
-              })}
+                      <div
+                        className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {isMulti ? (
+                          isSelected ? <Check className="w-4 h-4 text-white" /> : letter
+                        ) : (
+                          letter
+                        )}
+                      </div>
+                      <span className="text-xs sm:text-sm leading-relaxed">{opt.text}</span>
+                    </button>
+                  );
+                });
+              })()}
             </div>
 
             {/* Bottom Nav Controls */}
@@ -1464,10 +1503,16 @@ export const QuizView: React.FC<QuizViewProps> = ({
 
             <div className="space-y-6">
               {(latestResult.questions || selectedQuiz.questions || []).map((q, idx) => {
-                const userChoice = latestResult.answers[q.id];
                 const originalQ = quizzes.find((qz) => qz.id === selectedQuiz.id)?.questions.find((item) => item.id === q.id);
-                const correctOptId = q.correctOptionId || originalQ?.correctOptionId;
-                const isCorrect = Boolean(userChoice && correctOptId && userChoice === correctOptId);
+                const correctOptionIds = getQuestionCorrectOptionIds(q).length > 0
+                  ? getQuestionCorrectOptionIds(q)
+                  : getQuestionCorrectOptionIds(originalQ);
+                const userChoiceIds = getAnswerIds(latestResult.answers[q.id]);
+                const isMulti = isQuestionMultiSelect(q) || isQuestionMultiSelect(originalQ);
+                const isCorrect =
+                  correctOptionIds.length > 0 &&
+                  correctOptionIds.length === userChoiceIds.length &&
+                  correctOptionIds.every((id) => userChoiceIds.includes(id));
 
                 return (
                   <div
@@ -1479,9 +1524,17 @@ export const QuizView: React.FC<QuizViewProps> = ({
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3 mb-3">
-                      <h5 className="font-bold text-slate-900 text-sm">
-                        Câu {idx + 1}: {q.question}
-                      </h5>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 text-sm">Câu {idx + 1}</span>
+                          {isMulti && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                              Chọn nhiều đáp án
+                            </span>
+                          )}
+                        </div>
+                        <h5 className="font-semibold text-slate-800 text-sm">{q.question}</h5>
+                      </div>
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
                           isCorrect
@@ -1496,8 +1549,8 @@ export const QuizView: React.FC<QuizViewProps> = ({
                     {/* Options status */}
                     <div className="space-y-1.5 text-xs mb-3">
                       {(q.options || []).map((opt) => {
-                        const isThisUserChoice = userChoice === opt.id;
-                        const isThisCorrect = Boolean(correctOptId && correctOptId === opt.id);
+                        const isThisUserChoice = userChoiceIds.includes(opt.id);
+                        const isThisCorrect = correctOptionIds.includes(opt.id);
 
                         let style = 'bg-white text-slate-700 border-slate-200';
                         if (isThisCorrect) {
@@ -2953,7 +3006,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                                 <p
                                   key={opt.id}
                                   className={
-                                    q.correctOptionId === opt.id
+                                    getQuestionCorrectOptionIds(q).includes(opt.id)
                                       ? 'text-indigo-700 font-bold bg-indigo-50/60 px-1.5 py-0.5 rounded inline-block mr-2'
                                       : ''
                                   }
@@ -3018,6 +3071,11 @@ export const QuizView: React.FC<QuizViewProps> = ({
                               <span className="text-xs font-black text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-md">
                                 Câu {idx + 1}
                               </span>
+                              {isQuestionMultiSelect(q) && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold">
+                                  Nhiều đáp án
+                                </span>
+                              )}
                               <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-medium">
                                 📁 {folderName}
                               </span>
@@ -3028,7 +3086,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                                 <p
                                   key={opt.id}
                                   className={
-                                    q.correctOptionId === opt.id
+                                    getQuestionCorrectOptionIds(q).includes(opt.id)
                                       ? 'text-indigo-700 font-bold bg-indigo-100/70 px-1.5 py-0.5 rounded inline-block mr-2'
                                       : ''
                                   }
@@ -3334,58 +3392,119 @@ export const QuizView: React.FC<QuizViewProps> = ({
 
                     {/* Options */}
                     <div className="space-y-2 mb-3 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
-                      <p className="text-[11px] font-bold text-slate-500 mb-1">
-                        Các phương án trả lời (chọn radio để đặt làm đáp án đúng):
-                      </p>
-                      {q.options.map((opt, oIdx) => (
-                        <div key={opt.id} className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            name={`bank-correct-${q.id}`}
-                            checked={q.correctOptionId === opt.id}
-                            onChange={() => {
-                              const newBank = structuredClone(questionBank);
-                              newBank[bankIdx].correctOptionId = opt.id;
-                              onUpdateQuestionBank(newBank);
-                            }}
-                            className="text-indigo-600 cursor-pointer"
-                          />
-                          <span className="text-xs font-bold text-slate-500 w-5">
-                            {String.fromCharCode(65 + oIdx)}.
-                          </span>
-                          <input
-                            value={opt.text}
-                            onChange={(e) => {
-                              const newBank = structuredClone(questionBank);
-                              newBank[bankIdx].options[oIdx].text = e.target.value;
-                              onUpdateQuestionBank(newBank);
-                            }}
-                            className={`flex-1 px-3 py-1.5 rounded-lg border text-xs focus:ring-2 focus:ring-indigo-500/20 ${
-                              q.correctOptionId === opt.id
-                                ? 'border-emerald-300 bg-emerald-50/60 font-medium text-emerald-900'
-                                : 'border-slate-200 text-slate-700 bg-white'
-                            }`}
-                            placeholder={`Lựa chọn ${String.fromCharCode(65 + oIdx)}`}
-                          />
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-200/60">
+                        <span className="text-[11px] font-bold text-slate-600">
+                          Các phương án trả lời ({isQuestionMultiSelect(q) ? 'Chọn nhiều đáp án' : 'Chọn 1 đáp án'}):
+                        </span>
+                        <div className="inline-flex rounded-lg bg-slate-200/80 p-0.5 text-[10px] font-bold">
                           <button
+                            type="button"
                             onClick={() => {
                               const newBank = structuredClone(questionBank);
-                              newBank[bankIdx].options.splice(oIdx, 1);
-                              if (
-                                newBank[bankIdx].correctOptionId === opt.id &&
-                                newBank[bankIdx].options.length > 0
-                              ) {
-                                newBank[bankIdx].correctOptionId = newBank[bankIdx].options[0].id;
-                              }
+                              const currentCorrects = getQuestionCorrectOptionIds(q);
+                              const firstCorrect = currentCorrects[0] || (q.options[0]?.id || '');
+                              newBank[bankIdx].questionType = 'SINGLE';
+                              newBank[bankIdx].correctOptionId = firstCorrect;
+                              newBank[bankIdx].correctOptionIds = firstCorrect ? [firstCorrect] : [];
                               onUpdateQuestionBank(newBank);
                             }}
-                            className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer"
-                            title="Xóa lựa chọn"
+                            className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                              !isQuestionMultiSelect(q)
+                                ? 'bg-white text-indigo-700 shadow-2xs font-black'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
                           >
-                            ✕
+                            1 đáp án
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newBank = structuredClone(questionBank);
+                              const currentCorrects = getQuestionCorrectOptionIds(q);
+                              const initial = currentCorrects.length > 0 ? currentCorrects : (q.options[0]?.id ? [q.options[0].id] : []);
+                              newBank[bankIdx].questionType = 'MULTIPLE';
+                              newBank[bankIdx].correctOptionIds = initial;
+                              newBank[bankIdx].correctOptionId = initial.join(', ');
+                              onUpdateQuestionBank(newBank);
+                            }}
+                            className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                              isQuestionMultiSelect(q)
+                                ? 'bg-purple-600 text-white shadow-2xs font-black'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Nhiều đáp án
                           </button>
                         </div>
-                      ))}
+                      </div>
+
+                      {q.options.map((opt, oIdx) => {
+                        const isMulti = isQuestionMultiSelect(q);
+                        const isOptCorrect = getQuestionCorrectOptionIds(q).includes(opt.id);
+
+                        return (
+                          <div key={opt.id} className="flex items-center gap-2">
+                            <input
+                              type={isMulti ? 'checkbox' : 'radio'}
+                              name={isMulti ? undefined : `bank-correct-${q.id}`}
+                              checked={isOptCorrect}
+                              onChange={(e) => {
+                                const newBank = structuredClone(questionBank);
+                                if (isMulti) {
+                                  const currentCorrects = getQuestionCorrectOptionIds(q);
+                                  const nextCorrects = e.target.checked
+                                    ? Array.from(new Set([...currentCorrects, opt.id]))
+                                    : currentCorrects.filter((id) => id !== opt.id);
+                                  newBank[bankIdx].questionType = 'MULTIPLE';
+                                  newBank[bankIdx].correctOptionIds = nextCorrects;
+                                  newBank[bankIdx].correctOptionId = nextCorrects.join(', ');
+                                } else {
+                                  newBank[bankIdx].questionType = 'SINGLE';
+                                  newBank[bankIdx].correctOptionId = opt.id;
+                                  newBank[bankIdx].correctOptionIds = [opt.id];
+                                }
+                                onUpdateQuestionBank(newBank);
+                              }}
+                              className={`cursor-pointer ${isMulti ? 'rounded text-purple-600 focus:ring-purple-500' : 'text-indigo-600 focus:ring-indigo-500'}`}
+                            />
+                            <span className="text-xs font-bold text-slate-500 w-5">
+                              {String.fromCharCode(65 + oIdx)}.
+                            </span>
+                            <input
+                              value={opt.text}
+                              onChange={(e) => {
+                                const newBank = structuredClone(questionBank);
+                                newBank[bankIdx].options[oIdx].text = e.target.value;
+                                onUpdateQuestionBank(newBank);
+                              }}
+                              className={`flex-1 px-3 py-1.5 rounded-lg border text-xs focus:ring-2 focus:ring-indigo-500/20 ${
+                                isOptCorrect
+                                  ? 'border-emerald-300 bg-emerald-50/60 font-medium text-emerald-900'
+                                  : 'border-slate-200 text-slate-700 bg-white'
+                              }`}
+                              placeholder={`Lựa chọn ${String.fromCharCode(65 + oIdx)}`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newBank = structuredClone(questionBank);
+                                newBank[bankIdx].options.splice(oIdx, 1);
+                                const remainingCorrects = getQuestionCorrectOptionIds(newBank[bankIdx]).filter((id) => id !== opt.id);
+                                if (remainingCorrects.length === 0 && newBank[bankIdx].options.length > 0) {
+                                  remainingCorrects.push(newBank[bankIdx].options[0].id);
+                                }
+                                newBank[bankIdx].correctOptionIds = remainingCorrects;
+                                newBank[bankIdx].correctOptionId = remainingCorrects.join(', ');
+                                onUpdateQuestionBank(newBank);
+                              }}
+                              className="text-slate-400 hover:text-rose-500 p-1 cursor-pointer"
+                              title="Xóa lựa chọn"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })}
 
                       <button
                         onClick={() => {
