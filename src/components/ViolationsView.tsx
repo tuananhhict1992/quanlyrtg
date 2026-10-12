@@ -2,7 +2,7 @@ import {api} from '../services/supabase';
 import {GoogleReportDialog} from './GoogleReportActions';
 import {parseWorkbook, sourceForModule, clearSource} from '../services/excelProcessing';
 import {GoogleSyncPanel} from './GoogleSyncPanel';
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import {
   AlertTriangle,
   Upload,
@@ -56,6 +56,19 @@ import {
   THEO_DOI_VI_PHAM_TAB,
 } from '../services/googleSheetSyncService';
 import { signInWithGoogleDrive, getCachedToken } from '../services/googleDriveAuth';
+
+// Helper trích xuất tháng từ chuỗi thời gian sự cố (định dạng MM/YYYY)
+const extractMonthFromTime = (timeStr?: string): string | null => {
+  if (!timeStr) return null;
+  const s = String(timeStr).trim();
+  const dmyMatch = s.match(/(?:\b|\D)(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
+  if (dmyMatch) return `${dmyMatch[2].padStart(2, '0')}/${dmyMatch[3]}`;
+  const ymdMatch = s.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
+  if (ymdMatch) return `${ymdMatch[2].padStart(2, '0')}/${ymdMatch[1]}`;
+  const myMatch = s.match(/\b(\d{1,2})[\/\-](\d{4})\b/);
+  if (myMatch) return `${myMatch[1].padStart(2, '0')}/${myMatch[2]}`;
+  return null;
+};
 
 interface ViolationsViewProps {
   currentUser: Employee;
@@ -125,19 +138,6 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   // Bộ lọc theo Tháng: mặc định 'CURRENT' (Tháng hiện tại), có tùy chọn 'ALL' (Tất cả lịch sử)
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>('CURRENT');
 
-  // Helper trích xuất tháng từ chuỗi thời gian sự cố
-  const extractMonthFromTime = useCallback((timeStr?: string): string | null => {
-    if (!timeStr) return null;
-    const s = String(timeStr).trim();
-    const dmyMatch = s.match(/(?:\b|\D)(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
-    if (dmyMatch) return `${dmyMatch[2].padStart(2, '0')}/${dmyMatch[3]}`;
-    const ymdMatch = s.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
-    if (ymdMatch) return `${ymdMatch[2].padStart(2, '0')}/${ymdMatch[1]}`;
-    const myMatch = s.match(/\b(\d{1,2})[\/\-](\d{4})\b/);
-    if (myMatch) return `${myMatch[1].padStart(2, '0')}/${myMatch[2]}`;
-    return null;
-  }, []);
-
   // Trạng thái đồng bộ với file Data_RTG (sheet TheoDoiViPham)
   const [isSyncingDataRtg, setIsSyncingDataRtg] = useState<boolean>(false);
   const [dataRtgSyncMessage, setDataRtgSyncMessage] = useState<{
@@ -157,8 +157,8 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   const [editSuccessMsg, setEditSuccessMsg] = useState<string | null>(null);
 
   // Phân quyền quản trị vi phạm
-  const canManageViolations = currentUser.role==='ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_VIOLATIONS');
-  const publishedIncidents=(propIncidents || []).filter(item=>item.isSyncedToProfile===true);
+  const canManageViolations = Boolean(currentUser?.role==='ADMIN' || currentUser?.assignedPermissions?.includes('MANAGE_VIOLATIONS'));
+  const publishedIncidents=(propIncidents || []).filter(item=>Boolean(item?.isSyncedToProfile));
   const incidents=canManageViolations && viewMode==='DRAFT' ? draftIncidents : publishedIncidents;
 
   // Danh sách các tháng có dữ liệu sự cố (đặt sau khi incidents đã được khởi tạo)
@@ -168,41 +168,43 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
     const current = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
     months.add(current);
     (incidents || []).forEach((item) => {
-      const m = extractMonthFromTime(item.time);
-      if (m) months.add(m);
+      if (item?.time) {
+        const m = extractMonthFromTime(item.time);
+        if (m) months.add(m);
+      }
     });
     return Array.from(months).sort((a, b) => {
-      const [m1, y1] = a.split('/').map(Number);
-      const [m2, y2] = b.split('/').map(Number);
-      return (y2 * 12 + m2) - (y1 * 12 + m1);
+      const [m1, y1] = (a || '').split('/').map(Number);
+      const [m2, y2] = (b || '').split('/').map(Number);
+      return ((y2 || 0) * 12 + (m2 || 0)) - ((y1 || 0) * 12 + (m1 || 0));
     });
-  }, [incidents, extractMonthFromTime]);
+  }, [incidents]);
   React.useEffect(()=>{
     if(!canManageViolations)return;
     let active=true;
-    api<Employee[]>('/operations/incidents/employees').then(rows=>{if(active){setDirectory(rows);setDirectoryReady(true);}}).catch(error=>{if(active)setOperationError(error.message);});
+    api<Employee[]>('/operations/incidents/employees').then(rows=>{if(active){setDirectory(rows);setDirectoryReady(true);}}).catch(error=>{if(active)setOperationError(error?.message || 'Lỗi tải danh mục');});
     return()=>{active=false;};
-  },[canManageViolations,currentUser.id]);
+  },[canManageViolations,currentUser?.id]);
   React.useEffect(()=>{
     if(!canManageViolations)return;
     if(!initializedDrafts.current && propIncidents?.length) {
       initializedDrafts.current=true;
-      setDraftIncidents(propIncidents.filter(item=>item.isSyncedToProfile!==true));
+      setDraftIncidents((propIncidents || []).filter(item=>item?.isSyncedToProfile!==true));
     } else {
-      const publishedIds=new Set((propIncidents || []).filter(item=>item.isSyncedToProfile===true).map(item=>item.id));
-      setDraftIncidents(previous=>previous.filter(item=>!publishedIds.has(item.id)));
+      const publishedIds=new Set((propIncidents || []).filter(item=>item?.isSyncedToProfile===true).map(item=>item.id));
+      setDraftIncidents(previous=>(previous || []).filter(item=>!publishedIds.has(item.id)));
     }
   },[propIncidents,canManageViolations]);
 
   // Danh sách các vụ việc liên quan đến tài khoản người dùng hiện tại
   const myIncidents = useMemo(() => {
-    const myName = (currentUser.fullName || '').trim().toLowerCase();
+    const myName = (currentUser?.fullName || '').trim().toLowerCase();
     const myNoTone = removeVietnameseTones(myName).trim();
-    const myCode = (currentUser.employeeCode || '').trim().toLowerCase();
-    const myUsername = (currentUser.username || '').trim().toLowerCase();
+    const myCode = (currentUser?.employeeCode || '').trim().toLowerCase();
+    const myUsername = (currentUser?.username || '').trim().toLowerCase();
 
-    return incidents.filter((item) => {
-      if (!item.isRtgRelated) return false;
+    return (incidents || []).filter((item) => {
+      if (!item || !item.isRtgRelated) return false;
       const itemViolator = (item.normalizedName || item.violatorName || '').trim().toLowerCase();
       const itemViolatorNoTone = removeVietnameseTones(itemViolator).trim();
       const itemCode = (item.matchedEmployeeCode || '').trim().toLowerCase();
@@ -273,17 +275,18 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
 
   // Lọc tìm kiếm & mức độ & bộ lọc cho người xem
   const filteredIncidents = useMemo(() => {
-    return incidents.filter((item) => {
+    return (incidents || []).filter((item) => {
+      if (!item) return false;
       // Bắt buộc chỉ hiển thị Tổ RTG
       if (!item.isRtgRelated) return false;
 
       // Xử lý bộ lọc chuyên dụng cho tài khoản chỉ xem (Viewer)
       if (!canManageViolations) {
         if (viewerFilterTab === 'MINE') {
-          const myName = (currentUser.fullName || '').trim().toLowerCase();
+          const myName = (currentUser?.fullName || '').trim().toLowerCase();
           const myNoTone = removeVietnameseTones(myName).trim();
-          const myCode = (currentUser.employeeCode || '').trim().toLowerCase();
-          const myUsername = (currentUser.username || '').trim().toLowerCase();
+          const myCode = (currentUser?.employeeCode || '').trim().toLowerCase();
+          const myUsername = (currentUser?.username || '').trim().toLowerCase();
 
           const itemViolator = (item.normalizedName || item.violatorName || '').trim().toLowerCase();
           const itemViolatorNoTone = removeVietnameseTones(itemViolator).trim();
@@ -302,9 +305,9 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
         } else if (viewerFilterTab === 'SEVERE') {
           if (item.severity !== 'NGHIEM_TRONG') return false;
         } else if (viewerFilterTab === 'SHIFT') {
-          const myDept = (currentUser.department || '').toLowerCase();
+          const myDept = (currentUser?.department || '').toLowerCase();
           const itemDept = (item.matchedDepartment || item.department || '').toLowerCase();
-          if (!itemDept.includes(myDept) && !myDept.includes(itemDept)) return false;
+          if (myDept && !itemDept.includes(myDept) && !myDept.includes(itemDept)) return false;
         }
 
         // Lọc theo ca trực cụ thể nếu chọn
@@ -333,17 +336,17 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
 
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        const matchName = item.violatorName.toLowerCase().includes(query);
+        const matchName = (item.violatorName || '').toLowerCase().includes(query);
         const matchOrig = item.originalName?.toLowerCase().includes(query);
-        const matchCode = item.code.toLowerCase().includes(query);
+        const matchCode = (item.code || '').toLowerCase().includes(query);
         const matchEmpCode = item.matchedEmployeeCode?.toLowerCase().includes(query);
         const matchEquip = item.equipment?.toLowerCase().includes(query);
-        const matchLoc = item.location.toLowerCase().includes(query);
-        const matchWhat = item.what.toLowerCase().includes(query);
-        const matchWhy = item.why.toLowerCase().includes(query);
-        const matchHow = item.how.toLowerCase().includes(query);
+        const matchLoc = (item.location || '').toLowerCase().includes(query);
+        const matchWhat = (item.what || '').toLowerCase().includes(query);
+        const matchWhy = (item.why || '').toLowerCase().includes(query);
+        const matchHow = (item.how || '').toLowerCase().includes(query);
         const matchDept = item.matchedDepartment?.toLowerCase().includes(query);
-        return (
+        return Boolean(
           matchName ||
           matchOrig ||
           matchCode ||
@@ -368,7 +371,6 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
     selectedShiftFilter,
     selectedCategoryFilter,
     selectedMonthFilter,
-    extractMonthFromTime,
     currentUser,
   ]);
 
@@ -952,7 +954,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
             </span>
           </div>
           <div className="text-3xl font-extrabold text-slate-900 mt-2">
-            {incidents.filter((i) => i.isRtgRelated).length}
+            {(incidents || []).filter((i) => Boolean(i?.isRtgRelated)).length}
           </div>
           <div className="text-xs text-emerald-600 font-semibold mt-1 flex items-center gap-1">
             <span>✓ {canManageViolations ? 'Khớp nhân sự hệ thống' : 'Đã ghi nhận trên hệ thống'}</span>
@@ -985,7 +987,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                Vụ việc của bạn ({currentUser.fullName.split(' ').pop()})
+                Vụ việc của bạn ({(currentUser?.fullName || '').split(' ').pop() || 'Cá nhân'})
               </span>
               <span
                 className={`p-2 rounded-xl ${
@@ -1034,7 +1036,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
             </span>
           </div>
           <div className="text-3xl font-extrabold text-red-600 mt-2">
-            {incidents.filter((i) => i.isRtgRelated && i.severity === 'NGHIEM_TRONG').length}
+            {(incidents || []).filter((i) => Boolean(i?.isRtgRelated && i.severity === 'NGHIEM_TRONG')).length}
           </div>
           <div className="text-xs text-red-500 font-medium mt-1">
             Va quẹt gầu cẩu / Lệch chốt twistlock
@@ -1219,7 +1221,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
               }`}
             >
-              Tất cả vụ việc ({incidents.filter((i) => i.isRtgRelated).length})
+              Tất cả vụ việc ({(incidents || []).filter((i) => Boolean(i?.isRtgRelated)).length})
             </button>
             <button
               type="button"
@@ -1256,10 +1258,10 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
             >
               <span>Sự cố nghiêm trọng</span>
               <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-red-100 text-red-700">
-                {incidents.filter((i) => i.isRtgRelated && i.severity === 'NGHIEM_TRONG').length}
+                {(incidents || []).filter((i) => Boolean(i?.isRtgRelated && i.severity === 'NGHIEM_TRONG')).length}
               </span>
             </button>
-            {currentUser.department && (
+            {currentUser?.department && (
               <button
                 type="button"
                 onClick={() => setViewerFilterTab('SHIFT')}
@@ -1325,7 +1327,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
               <option value="CURRENT">
                 Tháng {String(new Date().getMonth() + 1).padStart(2, '0')}/{new Date().getFullYear()} (Hiện tại)
               </option>
-              <option value="ALL">🌟 Tất cả lịch sử ({incidents.filter((i) => i.isRtgRelated).length})</option>
+              <option value="ALL">🌟 Tất cả lịch sử ({(incidents || []).filter((i) => Boolean(i?.isRtgRelated)).length})</option>
               {availableMonths
                 .filter((m) => m !== `${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`)
                 .map((m) => (
@@ -1370,7 +1372,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
               onClick={() => setSelectedMonthFilter('ALL')}
               className="text-xs font-bold text-indigo-700 hover:text-indigo-950 underline cursor-pointer"
             >
-              Xem tất cả lịch sử ({incidents.filter((i) => i.isRtgRelated).length} vụ việc)
+              Xem tất cả lịch sử ({(incidents || []).filter((i) => Boolean(i?.isRtgRelated)).length} vụ việc)
             </button>
           </div>
         )}
@@ -1422,7 +1424,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
           </div>
 
           {/* NÚT ĐỒNG BỘ DUY NHẤT VÀ NỔI BẬT DÀNH CHO ADMIN / QUẢN LÝ */}
-          {draftIncidents.filter((i) => i.isRtgRelated).length > 0 && (
+          {(draftIncidents || []).filter((i) => Boolean(i?.isRtgRelated)).length > 0 && (
             <button
               id="btn-unified-sync-violations"
               disabled={isSyncingProfiles || isProcessing}
@@ -1434,7 +1436,7 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
               <span>
                 {isSyncingProfiles
                   ? 'Đang đồng bộ…'
-                  : `Đồng bộ vào Hệ thống & Hồ sơ (${draftIncidents.filter((i) => i.isRtgRelated).length} vụ việc)`}
+                  : `Đồng bộ vào Hệ thống & Hồ sơ (${(draftIncidents || []).filter((i) => Boolean(i?.isRtgRelated)).length} vụ việc)`}
               </span>
             </button>
           )}
