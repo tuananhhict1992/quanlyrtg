@@ -4,6 +4,7 @@ import { pool, transaction, HttpError, asyncRoute } from "./db";
 import { stageEmbeddedFiles } from "./embedded-files";
 import { scheduledMaintenance } from "./scheduler";
 import { validateBankQuestion } from './question-bank';
+import { getQuestionCorrectIds } from './exams';
 import {
   MODULE_PERMISSIONS,
   SHEET_TABS,
@@ -116,11 +117,10 @@ export async function writeRecord(
   if (
     module === "quizzes" &&
     (!next.questions?.length ||
-      next.questions.some(
-        (q: any) =>
-          !q.correctOptionId ||
-          !q.options?.some((o: any) => o.id === q.correctOptionId),
-      ))
+      next.questions.some((q: any) => {
+        const correctIds = getQuestionCorrectIds(q);
+        return !correctIds.length || !correctIds.every((cid: string) => q.options?.some((o: any) => o.id === cid));
+      }))
   )
     throw new HttpError(400, "Đề thi cần câu hỏi và đáp án hợp lệ.");
   const hash = checksum(next);
@@ -205,7 +205,17 @@ recordsRouter.get(
     );
     const rows = result.rows
       .slice(0, limit)
-      .map((r) => redact(r.data, !hasPermission(req.user, "MANAGE_QUIZ")));
+      .map((r) => {
+        if (module === 'quizzes') {
+          const isPractice =
+            r.data?.examType === 'PRACTICE' ||
+            r.data?.isPractice === true ||
+            r.data?.isPractice === 'true' ||
+            String(r.data?.title || '').toLowerCase().includes('ôn');
+          if (isPractice) return r.data;
+        }
+        return redact(r.data, !hasPermission(req.user, "MANAGE_QUIZ"));
+      });
     res.json({
       items: rows,
       nextCursor: result.rows.length > limit ? result.rows[limit - 1].id : null,
@@ -223,7 +233,14 @@ recordsRouter.get(
       params,
     );
     if (!rows[0]) throw new HttpError(404, "Không tìm thấy bản ghi.");
-    res.json(redact(rows[0].data, !hasPermission(req.user, "MANAGE_QUIZ")));
+    const isPracticeQuiz =
+      module === 'quizzes' && (
+        rows[0].data?.examType === 'PRACTICE' ||
+        rows[0].data?.isPractice === true ||
+        rows[0].data?.isPractice === 'true' ||
+        String(rows[0].data?.title || '').toLowerCase().includes('ôn')
+      );
+    res.json(isPracticeQuiz ? rows[0].data : redact(rows[0].data, !hasPermission(req.user, "MANAGE_QUIZ")));
   }),
 );
 recordsRouter.post(

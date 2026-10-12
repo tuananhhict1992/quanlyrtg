@@ -1,17 +1,51 @@
 import { Router } from "express";
 import { randomUUID, randomInt } from "node:crypto";
-import { transaction, HttpError, asyncRoute } from "./db";
+import { transaction, HttpError, asyncRoute, pool } from "./db";
 import { redact, checksum } from "./security";
 import { audit, enqueue } from "./records";
 import { assignQuiz } from "./quiz-notifications";
-function getQuestionCorrectIds(q: any): string[] {
+export function getQuestionCorrectIds(q: any): string[] {
+  if (!q) return [];
+  const options = Array.isArray(q.options) ? q.options : [];
+  const rawList: string[] = [];
   if (Array.isArray(q.correctOptionIds) && q.correctOptionIds.length > 0) {
-    return q.correctOptionIds.map((s: any) => String(s).trim()).filter(Boolean);
+    rawList.push(...q.correctOptionIds.map((s: any) => String(s).trim()));
   }
   if (typeof q.correctOptionId === 'string' && q.correctOptionId.trim()) {
-    return q.correctOptionId.split(/[,;\s]+/).map((s: any) => String(s).trim()).filter(Boolean);
+    rawList.push(...q.correctOptionId.split(/[,;\s]+/).map((s: any) => String(s).trim()));
   }
-  return [];
+  if (typeof q.correctAnswer === 'string' && q.correctAnswer.trim()) {
+    rawList.push(...q.correctAnswer.split(/[,;\s]+/).map((s: any) => String(s).trim()));
+  }
+
+  const resolvedIds: string[] = [];
+  options.forEach((opt: any, idx: number) => {
+    const optId = String(opt.id || '').trim();
+    const optIdLower = optId.toLowerCase();
+    const optLetter = String.fromCharCode(65 + idx).toLowerCase();
+    const optTextLower = String(opt.text || '').trim().toLowerCase();
+
+    for (const raw of rawList) {
+      if (!raw) continue;
+      const rawLower = raw.toLowerCase();
+      if (
+        rawLower === optIdLower ||
+        rawLower === optLetter ||
+        rawLower === `opt-${optLetter}` ||
+        rawLower === `opt_${optLetter}` ||
+        optIdLower === `opt-${rawLower}` ||
+        rawLower === String(idx) ||
+        rawLower === optTextLower
+      ) {
+        if (!resolvedIds.includes(optId)) {
+          resolvedIds.push(optId);
+        }
+      }
+    }
+  });
+
+  if (resolvedIds.length > 0) return resolvedIds;
+  return rawList.filter(Boolean);
 }
 
 function getUserAnswerIds(ans: any): string[] {
@@ -147,9 +181,45 @@ examsRouter.post(
         )
       ).rows[0];
     });
+    const isPracticeExam = Boolean(
+      result.quiz?.examType === 'PRACTICE' ||
+      result.quiz?.isPractice === true ||
+      result.quiz?.isPractice === 'true' ||
+      String(result.quiz?.title || '').toLowerCase().includes('ôn')
+    );
+    let quizPayload = result.quiz;
+    if (isPracticeExam) {
+      try {
+        const rawQuiz = (
+          await pool.query(
+            "select data from private.records where module='quizzes' and id=$1",
+            [result.quiz_id || req.params.id],
+          )
+        ).rows[0]?.data;
+        if (rawQuiz && Array.isArray(rawQuiz.questions) && rawQuiz.questions.length > 0) {
+          quizPayload = {
+            ...result.quiz,
+            questions: (result.quiz?.questions || []).map((q: any) => {
+              const fullQ = rawQuiz.questions.find((rq: any) => rq.id === q.id);
+              return fullQ
+                ? {
+                    ...q,
+                    correctOptionId: fullQ.correctOptionId,
+                    correctOptionIds: fullQ.correctOptionIds,
+                    explanation: fullQ.explanation,
+                    citation: fullQ.citation,
+                  }
+                : q;
+            }),
+          };
+        }
+      } catch (err) {
+        console.error('Failed to load raw quiz for practice:', err);
+      }
+    }
     res.json({
       attemptId: result.id,
-      quiz: redact(result.quiz, true),
+      quiz: isPracticeExam ? quizPayload : redact(result.quiz, true),
       expiresAt: result.expires_at,
     });
   }),

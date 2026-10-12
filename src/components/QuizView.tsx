@@ -44,6 +44,7 @@ import {
   TrendingUp,
   Eye,
   Send,
+  Info,
 } from 'lucide-react';
 import { Quiz, QuizQuestion, QuestionFolder, QuizSubmission, Employee, AppSettings, ExamType } from '../types';
 import { AiQuestionImportModal } from './AiQuestionImportModal';
@@ -159,11 +160,86 @@ export const isQuestionMultiSelect = (q?: QuizQuestion | Omit<QuizQuestion, 'id'
   return false;
 };
 
-export const getQuestionCorrectOptionIds = (q?: QuizQuestion | Omit<QuizQuestion, 'id'> | null): string[] => {
-  if (!q) return [];
-  if (Array.isArray(q.correctOptionIds) && q.correctOptionIds.length > 0) return q.correctOptionIds;
-  if (typeof q.correctOptionId === 'string' && q.correctOptionId.trim()) {
-    return q.correctOptionId.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+export const isOptionCorrect = (
+  q?: QuizQuestion | Omit<QuizQuestion, 'id'> | null,
+  opt?: { id: string; text: string },
+  optIndex?: number,
+  fallbackQ?: QuizQuestion | null
+): boolean => {
+  if (!opt) return false;
+  const questionsToCheck = [q, fallbackQ].filter(Boolean) as (QuizQuestion | Omit<QuizQuestion, 'id'>)[];
+  if (questionsToCheck.length === 0) return false;
+
+  for (const targetQ of questionsToCheck) {
+    if ((opt as any).isCorrect === true) return true;
+
+    const rawList: string[] = [];
+    if (Array.isArray(targetQ.correctOptionIds)) {
+      rawList.push(...targetQ.correctOptionIds.map((s) => String(s).trim()));
+    }
+    if (typeof targetQ.correctOptionId === 'string' && targetQ.correctOptionId.trim()) {
+      rawList.push(...targetQ.correctOptionId.split(/[,;\s]+/).map((s) => s.trim()));
+    }
+    if (typeof (targetQ as any).correctAnswer === 'string' && (targetQ as any).correctAnswer.trim()) {
+      rawList.push(...(targetQ as any).correctAnswer.split(/[,;\s]+/).map((s: string) => s.trim()));
+    }
+
+    if (rawList.length === 0) continue;
+
+    const optIdNorm = String(opt.id || '').trim().toLowerCase();
+    const optLetter = typeof optIndex === 'number' ? String.fromCharCode(65 + optIndex).toLowerCase() : '';
+    const optTextNorm = String(opt.text || '').trim().toLowerCase();
+
+    for (const raw of rawList) {
+      if (!raw) continue;
+      const rawNorm = raw.toLowerCase();
+
+      // 1. Direct id match
+      if (rawNorm === optIdNorm) return true;
+
+      // 2. Letter match (a, opt-a, opt_a)
+      if (optLetter) {
+        if (rawNorm === optLetter) return true;
+        if (rawNorm === `opt-${optLetter}` || rawNorm === `opt_${optLetter}`) return true;
+        if (optIdNorm === `opt-${rawNorm}` || optIdNorm === `opt_${rawNorm}`) return true;
+        const letterMatch = rawNorm.match(/\b([a-z])\b/);
+        if (letterMatch && letterMatch[1] === optLetter) return true;
+      }
+
+      // 3. Index match (0 for A, 1 for B...)
+      if (typeof optIndex === 'number' && rawNorm === String(optIndex)) return true;
+
+      // 4. Text match
+      if (rawNorm === optTextNorm) return true;
+    }
+  }
+
+  return false;
+};
+
+export const getQuestionCorrectOptionIds = (
+  q?: QuizQuestion | Omit<QuizQuestion, 'id'> | null,
+  fallbackQ?: QuizQuestion | null
+): string[] => {
+  if (!q && !fallbackQ) return [];
+  const targetQ = q || fallbackQ!;
+  const options = targetQ.options || [];
+  const correctIds: string[] = [];
+
+  options.forEach((opt, idx) => {
+    if (isOptionCorrect(q, opt, idx, fallbackQ)) {
+      correctIds.push(opt.id);
+    }
+  });
+
+  if (correctIds.length > 0) return correctIds;
+
+  // Fallback to raw correctOptionIds / correctOptionId
+  if (Array.isArray(targetQ.correctOptionIds) && targetQ.correctOptionIds.length > 0) {
+    return targetQ.correctOptionIds.map((s) => String(s).trim()).filter(Boolean);
+  }
+  if (typeof targetQ.correctOptionId === 'string' && targetQ.correctOptionId.trim()) {
+    return targetQ.correctOptionId.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
   }
   return [];
 };
@@ -419,8 +495,9 @@ export const QuizView: React.FC<QuizViewProps> = ({
     return () => clearInterval(interval);
   }, [timerActive, timeLeftSeconds]);
 
-  const [attemptId,setAttemptId]=useState<string|null>(null);
-  const [submitting,setSubmitting]=useState(false);
+  const [attemptId, setAttemptId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [practiceCheckedMap, setPracticeCheckedMap] = useState<Record<string, boolean>>({});
   const handleStartQuiz = async (quiz: Quiz) => {
     // 1. Kiểm tra hẹn giờ phát đề & kết thúc kiểm tra
     const scheduleInfo = getQuizScheduleStatus(quiz);
@@ -428,7 +505,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
       alert(
         `Bài kiểm tra này chưa đến giờ mở đề!\nThời gian phát đề dự kiến: ${new Date(
           quiz.scheduledStartTime!
-        ).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})}`
+        ).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`
       );
       return;
     }
@@ -436,7 +513,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
       alert(
         `Bài kiểm tra này đã kết thúc kiểm tra vào lúc: ${new Date(
           quiz.scheduledEndTime!
-        ).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})}`
+        ).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`
       );
       return;
     }
@@ -453,10 +530,53 @@ export const QuizView: React.FC<QuizViewProps> = ({
     }
 
     try {
-      const attempt=await api('/exams/'+encodeURIComponent(quiz.id)+'/start',{method:'POST'});
-      setAttemptId(attempt.attemptId);setSelectedQuiz(attempt.quiz);setSelectedAnswers({});setCurrentQuestionIdx(0);
-      setTimeLeftSeconds(Math.max(0,Math.floor((Date.parse(attempt.expiresAt)-Date.now())/1000)));setTimerActive(true);
-    }catch(e){alert((e as Error).message);return;}
+      const attempt = await api<{ attemptId: string; quiz: Quiz; expiresAt: string }>(
+        '/exams/' + encodeURIComponent(quiz.id) + '/start',
+        { method: 'POST' }
+      );
+      setAttemptId(attempt.attemptId);
+      const isPrac = Boolean(
+        quiz.examType === 'PRACTICE' ||
+        quiz.isPractice === true ||
+        String(quiz.isPractice) === 'true' ||
+        attempt.quiz?.examType === 'PRACTICE' ||
+        attempt.quiz?.isPractice === true ||
+        String(attempt.quiz?.isPractice) === 'true' ||
+        String(quiz.title || '').toLowerCase().includes('ôn')
+      );
+      const fullQuizQuestions = quiz.questions && quiz.questions.length > 0 ? quiz.questions : attempt.quiz.questions;
+      const mergedQuiz: Quiz = isPrac
+        ? {
+            ...attempt.quiz,
+            isPractice: true,
+            examType: 'PRACTICE',
+            questions: (attempt.quiz.questions || []).map((q: any) => {
+              const fullQ =
+                fullQuizQuestions.find((fq: any) => fq.id === q.id) ||
+                questionBank.find((bq: any) => bq.id === q.id || (bq.question && bq.question === q.question));
+              return fullQ
+                ? {
+                    ...fullQ,
+                    ...q,
+                    correctOptionId: q.correctOptionId || fullQ.correctOptionId,
+                    correctOptionIds: (Array.isArray(q.correctOptionIds) && q.correctOptionIds.length > 0) ? q.correctOptionIds : fullQ.correctOptionIds,
+                    explanation: q.explanation || fullQ.explanation,
+                    citation: q.citation || fullQ.citation,
+                  }
+                : q;
+            }),
+          }
+        : attempt.quiz;
+      setSelectedQuiz(mergedQuiz);
+      setSelectedAnswers({});
+      setPracticeCheckedMap({});
+      setCurrentQuestionIdx(0);
+      setTimeLeftSeconds(Math.max(0, Math.floor((Date.parse(attempt.expiresAt) - Date.now()) / 1000)));
+      setTimerActive(true);
+    } catch (e) {
+      alert((e as Error).message);
+      return;
+    }
     setActiveTab('TAKE');
   };
 
@@ -684,6 +804,17 @@ export const QuizView: React.FC<QuizViewProps> = ({
   const handleSelectOption = (questionId: string, optionId: string) => {
     const q = selectedQuiz?.questions?.find((item) => item.id === questionId);
     const isMulti = isQuestionMultiSelect(q);
+    const isPracticeMode = Boolean(
+      selectedQuiz?.examType === 'PRACTICE' ||
+      selectedQuiz?.isPractice === true ||
+      String(selectedQuiz?.isPractice) === 'true' ||
+      String(selectedQuiz?.title || '').toLowerCase().includes('ôn')
+    );
+
+    if (isPracticeMode && practiceCheckedMap[questionId]) {
+      return; // Câu đã hiện đáp án không sửa lại được
+    }
+
     if (isMulti) {
       setSelectedAnswers((prev) => {
         const currentIds = getAnswerIds(prev[questionId]);
@@ -695,13 +826,33 @@ export const QuizView: React.FC<QuizViewProps> = ({
           [questionId]: nextIds.join(', '),
         };
       });
+      if (isPracticeMode && practiceCheckedMap[questionId]) {
+        setPracticeCheckedMap((prev) => ({
+          ...prev,
+          [questionId]: false,
+        }));
+      }
     } else {
       setSelectedAnswers((prev) => ({
         ...prev,
         [questionId]: optionId,
       }));
+      if (isPracticeMode) {
+        setPracticeCheckedMap((prev) => ({
+          ...prev,
+          [questionId]: true,
+        }));
+      }
     }
   };
+
+  const handleCheckPracticeQuestion = (questionId: string) => {
+    setPracticeCheckedMap((prev) => ({
+      ...prev,
+      [questionId]: true,
+    }));
+  };
+
 
   const handleSubmitQuiz = async () => {
     if(!attemptId||submitting)return;setSubmitting(true);setTimerActive(false);
@@ -1425,107 +1576,210 @@ export const QuizView: React.FC<QuizViewProps> = ({
             </div>
 
             {/* Question Text */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-bold text-slate-500 uppercase">
-                  Câu {currentQuestionIdx + 1}
-                </span>
-                {isQuestionMultiSelect(selectedQuiz.questions[currentQuestionIdx]) ? (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-1">
-                    <CheckSquare className="w-3 h-3 text-purple-700" />
-                    <span>Chọn nhiều đáp án</span>
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
-                    Chọn 1 đáp án
-                  </span>
-                )}
-              </div>
-              <h4 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-                {selectedQuiz.questions[currentQuestionIdx]?.question}
-              </h4>
-            </div>
+            {(() => {
+              const currentQ = selectedQuiz.questions[currentQuestionIdx];
+              const isMulti = isQuestionMultiSelect(currentQ);
+              const isPracticeMode = Boolean(
+                selectedQuiz?.examType === 'PRACTICE' ||
+                selectedQuiz?.isPractice === true ||
+                String(selectedQuiz?.isPractice) === 'true' ||
+                String(selectedQuiz?.title || '').toLowerCase().includes('ôn')
+              );
+              const originalQ =
+                quizzes.find((qz) => qz.id === selectedQuiz.id)?.questions?.find((item) => item.id === currentQ?.id) ||
+                questionBank.find((item) => item.id === currentQ?.id || (item.question && item.question === currentQ?.question));
+              const resolvedCorrectIds = getQuestionCorrectOptionIds(currentQ, originalQ);
+              const isPracticeChecked = isPracticeMode && Boolean(practiceCheckedMap[currentQ?.id]);
+              const currentAnswerIds = getAnswerIds(selectedAnswers[currentQ?.id]);
 
-            {/* Options List */}
-            <div className="space-y-3">
-              {(() => {
-                const currentQ = selectedQuiz.questions[currentQuestionIdx];
-                const isMulti = isQuestionMultiSelect(currentQ);
-                const currentAnswerIds = getAnswerIds(selectedAnswers[currentQ?.id]);
+              const isAnswerCorrect = Boolean(
+                resolvedCorrectIds.length > 0 &&
+                currentAnswerIds.length === resolvedCorrectIds.length &&
+                currentAnswerIds.every((id) => resolvedCorrectIds.includes(id)) &&
+                resolvedCorrectIds.every((id) => currentAnswerIds.includes(id))
+              );
 
-                return (currentQ?.options || []).map((opt, i) => {
-                  const isSelected = currentAnswerIds.includes(opt.id);
-                  const letter = String.fromCharCode(65 + i);
-
-                  return (
-                    <button
-                      key={opt.id}
-                      onClick={() =>
-                        handleSelectOption(currentQ?.id, opt.id)
-                      }
-                      className={`w-full p-4 rounded-2xl text-left border transition-all flex items-start gap-3.5 cursor-pointer ${
-                        isSelected
-                          ? 'bg-indigo-50/80 border-indigo-500 text-indigo-950 font-medium ring-1 ring-indigo-500/20'
-                          : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-800'
-                      }`}
-                    >
-                      <div
-                        className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 ${
-                          isSelected
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {isMulti ? (
-                          isSelected ? <Check className="w-4 h-4 text-white" /> : letter
-                        ) : (
-                          letter
+              return (
+                <>
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase">
+                          Câu {currentQuestionIdx + 1}
+                        </span>
+                        {isPracticeMode && (
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                            <BookOpen className="w-3 h-3 text-amber-700" />
+                            <span>Nội dung ôn tập</span>
+                          </span>
                         )}
                       </div>
-                      <span className="text-xs sm:text-sm leading-relaxed">{opt.text}</span>
-                    </button>
-                  );
-                });
-              })()}
-            </div>
+                      {isMulti ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-1">
+                          <CheckSquare className="w-3 h-3 text-purple-700" />
+                          <span>Chọn nhiều đáp án</span>
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                          Chọn 1 đáp án
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
+                      {currentQ?.question}
+                    </h4>
+                  </div>
 
-            {/* Bottom Nav Controls */}
-            <div className="flex items-center justify-between pt-6 border-t border-slate-100">
-              <button
-                disabled={currentQuestionIdx === 0}
-                onClick={() => setCurrentQuestionIdx((p) => Math.max(0, p - 1))}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 font-semibold text-xs"
-              >
-                Câu trước
-              </button>
+                  {/* Options List */}
+                  <div className="space-y-3">
+                    {(currentQ?.options || []).map((opt, i) => {
+                      const isSelected = currentAnswerIds.includes(opt.id);
+                      const letter = String.fromCharCode(65 + i);
+                      const isThisCorrect = isOptionCorrect(currentQ, opt, i, originalQ);
 
-              <div className="flex items-center gap-2">
-                {currentQuestionIdx < selectedQuiz.questions.length - 1 ? (
-                  <button
-                    onClick={() => setCurrentQuestionIdx((p) => p + 1)}
-                    className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs"
-                  >
-                    Câu tiếp theo →
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Bạn đã làm ${Object.keys(selectedAnswers).length}/${selectedQuiz.questions.length} câu. Bạn có chắc chắn muốn nộp bài để hệ thống chấm điểm tự động?`
-                        )
-                      ) {
-                        handleSubmitQuiz();
+                      let optionStyle = 'bg-white hover:bg-slate-50 border-slate-200 text-slate-800';
+                      let badgeStyle = 'bg-slate-100 text-slate-600';
+                      let badgeContent: React.ReactNode = isMulti ? (isSelected ? <Check className="w-4 h-4 text-white" /> : letter) : letter;
+
+                      if (isPracticeMode && isPracticeChecked) {
+                        if (isThisCorrect) {
+                          optionStyle = 'bg-emerald-50/80 border-2 border-emerald-500 text-emerald-950 font-medium shadow-xs';
+                          badgeStyle = 'bg-emerald-600 text-white';
+                          badgeContent = <Check className="w-4 h-4 text-white" />;
+                        } else if (isSelected && !isThisCorrect) {
+                          optionStyle = 'bg-rose-50/80 border-2 border-rose-500 text-rose-950 font-medium shadow-xs';
+                          badgeStyle = 'bg-rose-600 text-white';
+                          badgeContent = <X className="w-4 h-4 text-white" />;
+                        } else {
+                          optionStyle = 'bg-slate-50/40 border-slate-200 text-slate-400 opacity-60';
+                          badgeStyle = 'bg-slate-200/70 text-slate-400';
+                        }
+                      } else if (isSelected) {
+                        optionStyle = 'bg-indigo-50/80 border-indigo-500 text-indigo-950 font-medium ring-1 ring-indigo-500/20';
+                        badgeStyle = 'bg-indigo-600 text-white';
+                        if (isMulti) {
+                          badgeContent = <Check className="w-4 h-4 text-white" />;
+                        }
                       }
-                    }}
-                    className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm shadow-emerald-200 flex items-center gap-1.5"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Nộp bài & Chấm điểm</span>
-                  </button>
-                )}
-              </div>
-            </div>
+
+                      return (
+                        <button
+                          key={opt.id}
+                          disabled={Boolean(isPracticeMode && isPracticeChecked)}
+                          onClick={() => handleSelectOption(currentQ?.id, opt.id)}
+                          className={`w-full p-4 rounded-2xl text-left border transition-all flex items-start gap-3.5 ${
+                            isPracticeMode && isPracticeChecked ? 'cursor-default' : 'cursor-pointer'
+                          } ${optionStyle}`}
+                        >
+                          <div
+                            className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 ${badgeStyle}`}
+                          >
+                            {badgeContent}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs sm:text-sm leading-relaxed block">{opt.text}</span>
+                            {isPracticeMode && isPracticeChecked && isThisCorrect && (
+                              <span className="text-[11px] font-bold text-emerald-700 mt-1.5 flex items-center gap-1">
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Đáp án đúng</span>
+                              </span>
+                            )}
+                            {isPracticeMode && isPracticeChecked && isSelected && !isThisCorrect && (
+                              <span className="text-[11px] font-bold text-rose-700 mt-1.5 flex items-center gap-1">
+                                <X className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Đáp án sai</span>
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+
+                    {/* Multi-select check button in practice mode */}
+                    {isPracticeMode && isMulti && !isPracticeChecked && (
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          disabled={currentAnswerIds.length === 0}
+                          onClick={() => handleCheckPracticeQuestion(currentQ.id)}
+                          className="w-full py-3 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm shadow-indigo-200 transition-all cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>
+                            {currentAnswerIds.length > 0
+                              ? `Kiểm tra đáp án câu này (${currentAnswerIds.length} lựa chọn đã chọn)`
+                              : 'Hãy chọn ít nhất 1 phương án để kiểm tra'}
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Thanh thông báo kết quả ôn tập trực quan - Bỏ bảng subtext rườm rà */}
+                  {isPracticeMode && isPracticeChecked && (
+                    <div className="pt-2">
+                      {isAnswerCorrect ? (
+                        <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-medium flex items-center justify-between gap-2 shadow-2xs">
+                          <span className="flex items-center gap-1.5 font-bold">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                            <span>Chính xác! Bạn đã chọn đúng đáp án.</span>
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs font-medium flex items-center gap-1.5 shadow-2xs">
+                          <XCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                          <span className="font-bold">Chưa chính xác — đáp án đúng hiển thị viền xanh kèm dấu tích ở trên.</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Bottom Nav Controls */}
+                  <div className="flex items-center justify-between pt-6 border-t border-slate-100 flex-wrap gap-3">
+                    <button
+                      disabled={currentQuestionIdx === 0}
+                      onClick={() => setCurrentQuestionIdx((p) => Math.max(0, p - 1))}
+                      className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 font-semibold text-xs cursor-pointer"
+                    >
+                      ← Câu trước
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      {currentQuestionIdx < selectedQuiz.questions.length - 1 ? (
+                        <button
+                          onClick={() => setCurrentQuestionIdx((p) => p + 1)}
+                          className={`px-5 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                            isPracticeMode && isPracticeChecked
+                              ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 ring-2 ring-indigo-400 ring-offset-1 font-bold'
+                              : 'bg-slate-900 hover:bg-slate-800 text-white'
+                          }`}
+                        >
+                          <span>Câu tiếp theo →</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            if (
+                              confirm(
+                                isPracticeMode
+                                  ? `Bạn đã hoàn thành xem và ôn tập các câu hỏi (${Object.keys(selectedAnswers).length}/${selectedQuiz.questions.length} câu). Bạn có muốn nộp bài để xem tổng kết kết quả ôn tập?`
+                                  : `Bạn đã làm ${Object.keys(selectedAnswers).length}/${selectedQuiz.questions.length} câu. Bạn có chắc chắn muốn nộp bài để hệ thống chấm điểm tự động?`
+                              )
+                            ) {
+                              handleSubmitQuiz();
+                            }
+                          }}
+                          className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm shadow-emerald-200 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>{isPracticeMode ? 'Hoàn thành bài ôn tập' : 'Nộp bài & Chấm điểm'}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
