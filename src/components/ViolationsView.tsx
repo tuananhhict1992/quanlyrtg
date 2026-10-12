@@ -138,24 +138,6 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
     return null;
   }, []);
 
-  // Danh sách các tháng có dữ liệu sự cố
-  const availableMonths = useMemo(() => {
-    const months = new Set<string>();
-    const now = new Date();
-    const current = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-    months.add(current);
-    incidents.forEach((item) => {
-      const m = extractMonthFromTime(item.time);
-      if (m) months.add(m);
-    });
-    return Array.from(months).sort((a, b) => {
-      const [m1, y1] = a.split('/').map(Number);
-      const [m2, y2] = b.split('/').map(Number);
-      return (y2 * 12 + m2) - (y1 * 12 + m1);
-    });
-  }, [incidents, extractMonthFromTime]);
-
-
   // Trạng thái đồng bộ với file Data_RTG (sheet TheoDoiViPham)
   const [isSyncingDataRtg, setIsSyncingDataRtg] = useState<boolean>(false);
   const [dataRtgSyncMessage, setDataRtgSyncMessage] = useState<{
@@ -178,6 +160,23 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   const canManageViolations = currentUser.role==='ADMIN' || currentUser.assignedPermissions?.includes('MANAGE_VIOLATIONS');
   const publishedIncidents=(propIncidents || []).filter(item=>item.isSyncedToProfile===true);
   const incidents=canManageViolations && viewMode==='DRAFT' ? draftIncidents : publishedIncidents;
+
+  // Danh sách các tháng có dữ liệu sự cố (đặt sau khi incidents đã được khởi tạo)
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    const now = new Date();
+    const current = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    months.add(current);
+    (incidents || []).forEach((item) => {
+      const m = extractMonthFromTime(item.time);
+      if (m) months.add(m);
+    });
+    return Array.from(months).sort((a, b) => {
+      const [m1, y1] = a.split('/').map(Number);
+      const [m2, y2] = b.split('/').map(Number);
+      return (y2 * 12 + m2) - (y1 * 12 + m1);
+    });
+  }, [incidents, extractMonthFromTime]);
   React.useEffect(()=>{
     if(!canManageViolations)return;
     let active=true;
