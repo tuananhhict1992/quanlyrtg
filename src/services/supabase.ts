@@ -216,9 +216,11 @@ export function subscribeToCollection<T>(
   };
   const unsubscribe = observeChanges(module, schedule);
   schedule();
-  // Every account subscribes; bounded fallback also covers a temporarily unavailable WebSocket.
-  const fallbackTimer = setInterval(() => {if(document.visibilityState!=='hidden')schedule();}, (module === 'zaloMessages' ? 30000 : 60000) + Math.random() * 10000);
-  const resume = () => { if (Date.now() - lastSuccess >= 30000) schedule(); };
+  // Every account subscribes; bounded fallback covers temporarily unavailable WebSockets without exhausting Supabase Egress.
+  const fallbackInterval = module === 'zaloMessages' ? 180000 : 720000 + Math.random() * 180000; // 3 phút cho thông báo; 12-15 phút cho các phân hệ khác
+  const fallbackTimer = setInterval(() => { if (document.visibilityState !== 'hidden') schedule(); }, fallbackInterval);
+  const resume = () => { if (Date.now() - lastSuccess >= 300000) schedule(); }; // 5 phút mới cho phép tải lại khi focus tab
+
   const changed = (event:Event) => {if((event as CustomEvent).detail===module)schedule();};
   window.addEventListener('rtg:records-changed',changed);
   window.addEventListener('online',resume);

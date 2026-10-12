@@ -34,6 +34,7 @@ import {
   Save,
   X,
   Clock,
+  Calendar,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { IncidentViolation, IncidentAnalysisReport, Employee, AppSettings } from '../types';
@@ -121,6 +122,39 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
   const [viewerFilterTab, setViewerFilterTab] = useState<'ALL' | 'MINE' | 'SEVERE' | 'SHIFT'>('ALL');
   const [selectedShiftFilter, setSelectedShiftFilter] = useState<string>('ALL');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<'ALL' | 'PHU_LUC_1' | 'PHU_LUC_2'>('ALL');
+  // Bộ lọc theo Tháng: mặc định 'CURRENT' (Tháng hiện tại), có tùy chọn 'ALL' (Tất cả lịch sử)
+  const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>('CURRENT');
+
+  // Helper trích xuất tháng từ chuỗi thời gian sự cố
+  const extractMonthFromTime = useCallback((timeStr?: string): string | null => {
+    if (!timeStr) return null;
+    const s = String(timeStr).trim();
+    const dmyMatch = s.match(/(?:\b|\D)(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
+    if (dmyMatch) return `${dmyMatch[2].padStart(2, '0')}/${dmyMatch[3]}`;
+    const ymdMatch = s.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
+    if (ymdMatch) return `${ymdMatch[2].padStart(2, '0')}/${ymdMatch[1]}`;
+    const myMatch = s.match(/\b(\d{1,2})[\/\-](\d{4})\b/);
+    if (myMatch) return `${myMatch[1].padStart(2, '0')}/${myMatch[2]}`;
+    return null;
+  }, []);
+
+  // Danh sách các tháng có dữ liệu sự cố
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    const now = new Date();
+    const current = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    months.add(current);
+    incidents.forEach((item) => {
+      const m = extractMonthFromTime(item.time);
+      if (m) months.add(m);
+    });
+    return Array.from(months).sort((a, b) => {
+      const [m1, y1] = a.split('/').map(Number);
+      const [m2, y2] = b.split('/').map(Number);
+      return (y2 * 12 + m2) - (y1 * 12 + m1);
+    });
+  }, [incidents, extractMonthFromTime]);
+
 
   // Trạng thái đồng bộ với file Data_RTG (sheet TheoDoiViPham)
   const [isSyncingDataRtg, setIsSyncingDataRtg] = useState<boolean>(false);
@@ -286,6 +320,16 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
         }
       }
 
+      // Lọc theo Tháng (Mặc định: Tháng hiện tại, hoặc tháng cụ thể, hoặc 'ALL' để xem tất cả lịch sử)
+      if (selectedMonthFilter !== 'ALL') {
+        const now = new Date();
+        const targetMonth = selectedMonthFilter === 'CURRENT'
+          ? `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`
+          : selectedMonthFilter;
+        const itemMonth = extractMonthFromTime(item.time);
+        if (itemMonth && itemMonth !== targetMonth) return false;
+      }
+
       if (severityFilter !== 'ALL' && item.severity !== severityFilter) return false;
 
       if (searchQuery.trim()) {
@@ -324,6 +368,8 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
     viewerFilterTab,
     selectedShiftFilter,
     selectedCategoryFilter,
+    selectedMonthFilter,
+    extractMonthFromTime,
     currentUser,
   ]);
 
@@ -1270,6 +1316,24 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
               </select>
             )}
 
+            {/* Bộ lọc Thời gian / Tháng vận hành */}
+            <select
+              value={selectedMonthFilter}
+              onChange={(e) => setSelectedMonthFilter(e.target.value)}
+              className="px-3 py-2 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-50 text-indigo-900 text-xs sm:text-sm font-bold outline-none cursor-pointer transition-colors shadow-2xs shrink-0"
+              title="Lọc sự cố & vi phạm theo tháng vận hành"
+            >
+              <option value="CURRENT">
+                Tháng {String(new Date().getMonth() + 1).padStart(2, '0')}/{new Date().getFullYear()} (Hiện tại)
+              </option>
+              <option value="ALL">🌟 Tất cả lịch sử ({incidents.filter((i) => i.isRtgRelated).length})</option>
+              {availableMonths
+                .filter((m) => m !== `${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`)
+                .map((m) => (
+                  <option key={m} value={m}>Tháng {m}</option>
+                ))}
+            </select>
+
             <select
               value={severityFilter}
               onChange={(e) => setSeverityFilter(e.target.value as any)}
@@ -1294,6 +1358,23 @@ export const ViolationsView: React.FC<ViolationsViewProps> = ({
             </div>
           )}
         </div>
+
+        {/* Chỉ báo trạng thái lọc theo tháng */}
+        {selectedMonthFilter !== 'ALL' && (
+          <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-indigo-50/80 border border-indigo-200/90 text-xs mt-2">
+            <span className="text-indigo-950 font-medium flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-indigo-600" />
+              Đang hiển thị dữ liệu <strong>Tháng {selectedMonthFilter === 'CURRENT' ? `${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}` : selectedMonthFilter}</strong> ({filteredIncidents.length} vụ việc).
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedMonthFilter('ALL')}
+              className="text-xs font-bold text-indigo-700 hover:text-indigo-950 underline cursor-pointer"
+            >
+              Xem tất cả lịch sử ({incidents.filter((i) => i.isRtgRelated).length} vụ việc)
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Xem trước Markdown nếu bật (Chỉ quản trị viên) */}

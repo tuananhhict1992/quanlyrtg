@@ -76,8 +76,26 @@ interface ToastMessage {
 }
 
 export default function App() {
-  // Cloud PostgreSQL Realtime State
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  // Cloud PostgreSQL Realtime State - Khởi tạo danh sách 76 NV từ localStorage để hiển thị tức thì (0ms)
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    try {
+      const cached = localStorage.getItem('rtg_cached_employees_76');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+  const updateEmployees = useCallback((items: Employee[]) => {
+    setEmployees(items);
+    try {
+      if (Array.isArray(items) && items.length > 0) {
+        localStorage.setItem('rtg_cached_employees_76', JSON.stringify(items));
+      }
+    } catch {}
+  }, []);
+
   const [documents, setDocuments] = useState<InternalDocument[]>([]);
   const [questionBank, setQuestionBank] = useState<QuizQuestion[]>([]);
   const [questionFolders, setQuestionFolders] = useState<QuestionFolder[]>([]);
@@ -186,8 +204,8 @@ export default function App() {
       catch(e:any){if(active && (e.status===401 || e.status===403)){setCurrentUser(null);setAuthError(e.message);}}
       finally{refreshing=false;}
     };
-    setDataLoading(true);
-    const sources:[string,(data:any[])=>void][]=[['employees',setEmployees],['internalDocuments',setDocuments],['questionFolders',setQuestionFolders],['questionBank',setQuestionBank],['quizzes',setQuizzes],['quizSubmissions',setSubmissions],['feedbacks',setFeedbacks],['zaloMessages',setZaloMessages],['bxxlRecords',setBxxlRecords],['leaveRequests',setLeaveRequests],['incidents',setIncidents]];
+    setDataLoading(employees.length === 0);
+    const sources:[string,(data:any[])=>void][]=[['employees',updateEmployees],['internalDocuments',setDocuments],['questionFolders',setQuestionFolders],['questionBank',setQuestionBank],['quizzes',setQuizzes],['quizSubmissions',setSubmissions],['feedbacks',setFeedbacks],['zaloMessages',setZaloMessages],['bxxlRecords',setBxxlRecords],['leaveRequests',setLeaveRequests],['incidents',setIncidents]];
     let count=0;const done=()=>{if(++count>=sources.length)setDataLoading(false);};
     const unsubs=sources.map(([module,set])=>subscribeToCollection(module,items=>{
       set(items);done();
